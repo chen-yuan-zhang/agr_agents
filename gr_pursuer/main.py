@@ -1,12 +1,4 @@
-# import gymnasium as gym
-# import multigrid.envs
-
-# env = gym.make('MultiGrid-Empty-5x5-v0', agents=2, render_mode='human')
-
-
-
-# env.close()
-
+from .evader import Evader
 from multigrid.envs.evader_pursuer import EvaderPursuerEnv
 
 
@@ -14,13 +6,17 @@ env = EvaderPursuerEnv(size=16, render_mode='human')
 env.reset()
 
 observations, infos = env.reset()
-print(env.agents)
+observations = [{"grid": env.grid.state, "pos": agent.pos, "dir": agent.dir} 
+                for agent in env.agents]
 
 pursuer = env.agents[0]
-evader = env.agents[1]
-while not env.is_done():
-   # this is where you would insert your policy / policies
-#    actions = {agent.index: agent.action_space.sample() for agent in env.agents}
-   
-   actions = {evader.index: evader.action_space.sample()}#, pursuer.index: None}
+evader = Evader(env.agents[1], env.goal)
+
+
+while not env.is_done():  
+
+   actions = {evader.agent.index: evader.compute_action(observations[1])}#, pursuer.index: None}
    observations, rewards, terminations, truncations, infos = env.step(actions)
+
+   observations = [{"grid": env.grid.state, "pos": agent.pos, "dir": agent.dir} 
+                   for agent in env.agents]
