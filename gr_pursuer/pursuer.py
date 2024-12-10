@@ -6,10 +6,10 @@ from multigrid.core.actions import Action
 
 class Pursuer:
 
-    def __init__(self, agent, goals, start_pos):
+    def __init__(self, agent, goals):
         self.agent = agent
         self.goals = goals
-        self.start = start_pos
+        self.start = None
 
     def compute_action(self, observations):
 
@@ -19,6 +19,9 @@ class Pursuer:
         dir = np.array(obs["dir"])
         dir_vec = DIR_TO_VEC[dir]
         cost = (grid==2).astype(int)*1000
+
+        if self.start is None:
+            self.start = pos
 
         if tuple(pos) == observations[1]["pos"]:
             self.agent.state.terminated == True
