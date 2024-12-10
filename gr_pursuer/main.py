@@ -9,21 +9,25 @@ env = EvaderPursuerEnv(size=16, render_mode='human')
 while True:
    env.reset()
 
-   observations, infos = env.reset()
+   (observations, infos), goals, start_pos = env.reset()
    observations = [{"grid": env.grid.state, "pos": agent.pos, "dir": agent.dir} 
                   for agent in env.agents]
 
-   pursuer = Pursuer(env.agents[0])
+
+
+   pursuer = Pursuer(env.agents[0], goals, start_pos)
    evader = Evader(env.agents[1], env.goal)
    
 
    while not env.is_done():  
 
+      action, prob_dict = pursuer.compute_action(observations)
       actions = {
-         pursuer.agent.index: pursuer.compute_action(observations),
+         pursuer.agent.index: action,
          evader.agent.index: evader.compute_action(observations)
       }
       observations, rewards, terminations, truncations, infos = env.step(actions)
+
 
       observations = [{"grid": env.grid.state, "pos": agent.pos, "dir": agent.dir} 
                      for agent in env.agents]
