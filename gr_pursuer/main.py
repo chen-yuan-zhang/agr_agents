@@ -3,36 +3,37 @@ from .pursuer import Pursuer
 from multigrid.envs.evader_pursuer import EvaderPursuerEnv
 from time import sleep
 
-env = EvaderPursuerEnv(size=16, render_mode='human')
+env = EvaderPursuerEnv(size=16, agent_view_size=5, render_mode='human')
 
 
 while True:
    env.reset()
 
-   (observations, infos), goals = env.reset()
-   observations = [{"grid": env.grid.state, "pos": agent.pos, "dir": agent.dir} 
-                  for agent in env.agents]
+   observations, infos = env.reset()
+   # observations = [{"grid": env.grid.state, 
+   #                  "observation": observations[i], 
+   #                  "pos": agent.pos, "dir": agent.dir} 
+   #                for i, agent in enumerate(env.agents)]
 
-
-
-   pursuer = Pursuer(env.agents[0], goals)
-   evader = Evader(env.agents[1], env.goal)
-   
+   pursuer = Pursuer(env.pursuer, env.goals)
+   evader = Evader(env.evader, env.goal)
 
    while not env.is_done():  
 
-      action, prob_dict = pursuer.compute_action(observations)
       actions = {
-         pursuer.agent.index: action,
-         evader.agent.index: evader.compute_action(observations)
+         pursuer.agent.index: pursuer.compute_action(observations[0]),
+         evader.agent.index: evader.compute_action(observations[1])
       }
       observations, rewards, terminations, truncations, infos = env.step(actions)
-
-
-      observations = [{"grid": env.grid.state, "pos": agent.pos, "dir": agent.dir} 
-                     for agent in env.agents]
       
-      if pursuer.agent.state.terminated or evader.agent.state.terminated or observations[0]["pos"] == observations[1]["pos"]:
+
+      # observations = [{"grid": env.grid.state, "pos": agent.pos, "dir": agent.dir} 
+      #                for agent in env.agents]
+      
+      # print(pursuer.prob_dict)
+      
+      if pursuer.agent.state.terminated or evader.agent.state.terminated \
+         or observations[0]["pos"] == observations[1]["pos"]:
          break
-      
+
       sleep(0.3)

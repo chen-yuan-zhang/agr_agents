@@ -11,4 +11,8 @@ class World:
         image = obs['image']
         orientation = obs['orientation']
 
+        # if orientation == 0:
+        #     self.grid[] = image
+
+
         
