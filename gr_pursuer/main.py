@@ -30,10 +30,11 @@ while True:
       # observations = [{"grid": env.grid.state, "pos": agent.pos, "dir": agent.dir} 
       #                for agent in env.agents]
       
-      # print(pursuer.prob_dict)
+      print(pursuer.mode)
+      print(pursuer.prob_dict)
+
       
-      if pursuer.agent.state.terminated or evader.agent.state.terminated \
-         or observations[0]["pos"] == observations[1]["pos"]:
+      if pursuer.agent.state.terminated or evader.agent.state.terminated:
          break
 
       sleep(0.3)

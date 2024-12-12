@@ -63,6 +63,9 @@ class Pursuer:
             self.evader_observations.append((self.step, evader_pos, evader_dir))
             # print(self.evader_observations)
 
+            if len(self.evader_observations) > 3 and max((self.prob_dict).values())>0.8:
+                self.mode = MOVE2GOAL
+
         path = None
         dir_vec_ = None
         # EXE MODE BEHAVIOUR
@@ -75,7 +78,7 @@ class Pursuer:
         elif self.mode == MOVE2GOAL:
             path = astar2d(pos, self.infer_goal, cost)
 
-        if not path and dir_vec_ is not None:
+        if len(path)<2 and dir_vec_ is not None:
             n_dir = len(DIR_TO_VEC)
             dir_vec_curr = DIR_TO_VEC[(dir+1)%n_dir]
 
