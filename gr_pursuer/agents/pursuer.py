@@ -66,8 +66,8 @@ class Pursuer(BaseAgent):
             self.evader_observations.append((self.step, evader_pos, evader_dir))
             # print(self.evader_observations)
 
-            if len(self.evader_observations) > 3 and max((self.prob_dict).values())>0.8:
-                self.mode = MOVE2GOAL
+            # if len(self.evader_observations) > 8 and max((self.prob_dict).values())>0.9:
+            #     self.mode = MOVE2GOAL
 
         path = None
         dir_vec_ = None
