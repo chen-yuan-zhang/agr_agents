@@ -42,17 +42,17 @@ class Evader(BaseAgent):
         if self.mode == EVADE:
             # Choose a random position from the grid and move to that position
             if self.evade_goal is None:
-                self.evade_goal = random.choice(np.argwhere(grid==2))
+                self.evade_goal = random.choice(np.argwhere(grid!=2))
                 self.path = astar2d(pos, self.evade_goal, cost)
 
-            if len(self.path)==1:
+            if self.path is None or len(self.path)<=1:
                 self.mode = MOVE2GOAL
                 self.evade_goal = None
                 self.path = None
 
         if self.mode == MOVE2GOAL:
             if self.path is None or pos not in self.path:
-                self.path = astar2d(pos, self.goal, cost)
+                self.path = astar2d(pos, self.goal, cost)        
                 
         if pos in self.path:
             index = self.path.index(pos)
@@ -60,15 +60,19 @@ class Evader(BaseAgent):
             print(f"Error: pos {pos} not in path {self.path}")
         # self.path = self.path[index+1:]
 
+        
+
         if not self.path:
             return Action.right
 
         next_pos = np.array(self.path[index+1])
         dir_vec_ = next_pos - np.array(pos)
 
+        print(self.path[index+1], self.path)
+
         if (dir_vec_==dir_vec).all():
             action = Action.forward
-            self.path = self.path[index+1:]
+            # self.path = self.path[index+1:]
         else:
             n_dir = len(DIR_TO_VEC)
             dir_vec_opt = DIR_TO_VEC[(dir+1)%n_dir]
