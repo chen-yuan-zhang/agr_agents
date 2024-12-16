@@ -1,5 +1,5 @@
-from .evader import Evader
-from .pursuer import Pursuer
+from .agents.evader import Evader
+from .agents.pursuer import Pursuer
 from multigrid.envs.evader_pursuer import EvaderPursuerEnv
 from time import sleep
 
@@ -30,11 +30,10 @@ while True:
       # observations = [{"grid": env.grid.state, "pos": agent.pos, "dir": agent.dir} 
       #                for agent in env.agents]
       
-      print(pursuer.mode)
-      print(pursuer.prob_dict)
+      # print(pursuer.prob_dict)
 
       
-      if pursuer.agent.state.terminated or evader.agent.state.terminated:
-         break
+      # if pursuer.agent.state.terminated or evader.agent.state.terminated:
+      #    break
 
       sleep(0.3)

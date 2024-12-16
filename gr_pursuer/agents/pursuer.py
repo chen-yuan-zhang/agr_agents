@@ -1,4 +1,5 @@
-from .astar import astar2d
+from .base import BaseAgent
+from ..astar import astar2d
 
 import numpy as np
 from multigrid.core.constants import DIR_TO_VEC
@@ -8,10 +9,12 @@ from multigrid.core.actions import Action
 TRACK = 0
 MOVE2GOAL = 1
 
-class Pursuer:
+class Pursuer(BaseAgent):
 
     def __init__(self, agent, goals):
-        self.agent = agent
+
+        super().__init__(agent)
+
         self.goals = goals
         self.start = None
         self.prob_dict = None
