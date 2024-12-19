@@ -18,6 +18,7 @@ class Pursuer(BaseAgent):
         self.goals = goals
         self.start = None
         self.prob_dict = None
+        self.agent.can_overlap = True
 
         self.step = -1
         self.evader_observations = []
@@ -52,7 +53,7 @@ class Pursuer(BaseAgent):
         pos = list(obs["pos"])
         dir = np.array(obs["dir"])
         dir_vec = DIR_TO_VEC[dir]
-        cost = (grid==2).astype(int)*1000
+        cost = (grid==-1).astype(int)*1000
 
         if self.start is None:
             self.start = pos
@@ -66,8 +67,8 @@ class Pursuer(BaseAgent):
             self.evader_observations.append((self.step, evader_pos, evader_dir))
             # print(self.evader_observations)
 
-            # if len(self.evader_observations) > 8 and max((self.prob_dict).values())>0.9:
-            #     self.mode = MOVE2GOAL
+            if len(self.evader_observations) > 3 and max((self.prob_dict).values())>0.8:
+                self.mode = MOVE2GOAL
 
         path = None
         dir_vec_ = None
@@ -81,7 +82,10 @@ class Pursuer(BaseAgent):
         elif self.mode == MOVE2GOAL:
             path = astar2d(pos, self.infer_goal, cost)
 
-        if len(path)<2 and dir_vec_ is not None:
+        if len(path)<2 or path is None:
+            return Action.right
+
+        elif len(path)<2 and dir_vec_ is not None:
             n_dir = len(DIR_TO_VEC)
             dir_vec_curr = DIR_TO_VEC[(dir+1)%n_dir]
 
@@ -90,7 +94,8 @@ class Pursuer(BaseAgent):
             else:
                 action = Action.left
 
-        else:
+        else:            
+
             next_pos = np.array(path[1])     
             dir_vec_ = next_pos - np.array(pos)
 

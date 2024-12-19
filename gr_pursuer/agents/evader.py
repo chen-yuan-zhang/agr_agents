@@ -19,8 +19,9 @@ class Evader(BaseAgent):
         self.goal = goal
         self.evade_goal = None
         self.path = None
+        self.agent.can_overlap = False
 
-        self.mode = EVADE
+        self.mode = MOVE2GOAL
 
     def compute_action(self, obs):
 
@@ -58,17 +59,15 @@ class Evader(BaseAgent):
             index = self.path.index(pos)
         else:
             print(f"Error: pos {pos} not in path {self.path}")
-        # self.path = self.path[index+1:]
-
-        
 
         if not self.path:
             return Action.right
 
+        # print(self.path[index+1:])
+        # if len()
         next_pos = np.array(self.path[index+1])
+        # print(f"Next pos: {next_pos}")
         dir_vec_ = next_pos - np.array(pos)
-
-        print(self.path[index+1], self.path)
 
         if (dir_vec_==dir_vec).all():
             action = Action.forward
@@ -81,9 +80,6 @@ class Evader(BaseAgent):
                 action = Action.right
             else:
                 action = Action.left
-
-        if (next_pos == self.goal).all():
-            self.agent.state.terminated = True
 
         return action
 

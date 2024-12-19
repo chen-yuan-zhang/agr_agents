@@ -1,11 +1,10 @@
 from .agents.evader import Evader
 from .agents.pursuer import Pursuer
-from multigrid.envs.evader_pursuer import EvaderPursuerEnv
+from multigrid.envs.evader_pursuer import PursuerEnv
 from time import sleep
 
-env = EvaderPursuerEnv(size=16, agent_view_size=5, render_mode='human')
 
-
+env = PursuerEnv(size=16, agent_view_size=5, render_mode='human')
 while True:
    env.reset()
 
@@ -25,14 +24,16 @@ while True:
          evader.agent.index: evader.compute_action(observations[1])
       }
       observations, rewards, terminations, truncations, infos = env.step(actions)
-      
 
       # observations = [{"grid": env.grid.state, "pos": agent.pos, "dir": agent.dir} 
       #                for agent in env.agents]
       
       # print(pursuer.prob_dict)
 
-      
+      probs = pursuer.prob_dict
+      probs = " ".join([f"{env.POS2COLOR[k]}: {v:.2f}   " for k, v in probs.items()])
+      env.mission = probs
+
       # if pursuer.agent.state.terminated or evader.agent.state.terminated:
       #    break
 
