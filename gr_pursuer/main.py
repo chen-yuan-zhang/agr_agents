@@ -1,10 +1,11 @@
 from .agents.evader import Evader
 from .agents.pursuer import Pursuer
-from multigrid.envs.evader_pursuer import PursuerEnv
+from multigrid.envs.pursuer import PursuerEnv
 from time import sleep
+import numpy as np
 
-
-env = PursuerEnv(size=16, agent_view_size=5, render_mode='human')
+base_grid = np.load("gr_pursuer/custom_grids/grid1.npy")
+env = PursuerEnv(agent_view_size=5, base_grid=base_grid, render_mode='human')
 while True:
    env.reset()
 
