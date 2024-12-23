@@ -21,7 +21,7 @@ class Pursuer(BaseAgent):
         self.agent.can_overlap = True
 
         self.step = -1
-        self.evader_observations = []
+        self.target_observations = []
 
         self.infer_goal = None
         self.mode = TRACK
@@ -58,26 +58,26 @@ class Pursuer(BaseAgent):
         if self.start is None:
             self.start = pos
 
-        # STACK OBSERVARIONS
-        if "evader_pos" in obs:
-            evader_pos = obs["evader_pos"]
-            evader_dir = obs["evader_dir"]
-            self.infer_goal, self.prob_dict = self.compute_gr(evader_pos, cost)
+        # STACK OBSERVATIONS
+        if "target_pos" in obs:
+            target_pos = obs["target_pos"]
+            target_dir = obs["target_dir"]
+            self.infer_goal, self.prob_dict = self.compute_gr(target_pos, cost)
 
-            self.evader_observations.append((self.step, evader_pos, evader_dir))
-            # print(self.evader_observations)
+            self.target_observations.append((self.step, target_pos, target_dir))
+            # print(self.target_observations)
 
-            if len(self.evader_observations) > 3 and max((self.prob_dict).values())>0.8:
+            if len(self.target_observations) > 3 and max((self.prob_dict).values())>0.8:
                 self.mode = MOVE2GOAL
 
         path = None
         dir_vec_ = None
         # EXE MODE BEHAVIOUR
         if self.mode == TRACK:
-            last_evader_obs = self.evader_observations[-1]
-            step, evader_pos, evader_dir = last_evader_obs
-            dir_vec_ = DIR_TO_VEC[evader_dir]
-            path = astar2d(pos, evader_pos, cost)
+            last_target_obs = self.target_observations[-1]
+            step, target_pos, target_dir = last_target_obs
+            dir_vec_ = DIR_TO_VEC[target_dir]
+            path = astar2d(pos, target_pos, cost)
 
         elif self.mode == MOVE2GOAL:
             path = astar2d(pos, self.infer_goal, cost)

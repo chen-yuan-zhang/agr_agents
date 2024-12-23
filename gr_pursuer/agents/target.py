@@ -10,14 +10,14 @@ from multigrid.core.actions import Action
 EVADE = 0
 MOVE2GOAL = 1
 
-class Evader(BaseAgent):
+class Target(BaseAgent):
 
     def __init__(self, agent, goal) -> None:
 
         super().__init__(agent)
     
         self.goal = goal
-        self.evade_goal = None
+        self.target_goal = None
         self.path = None
         self.agent.can_overlap = False
 
@@ -42,13 +42,13 @@ class Evader(BaseAgent):
 
         if self.mode == EVADE:
             # Choose a random position from the grid and move to that position
-            if self.evade_goal is None:
-                self.evade_goal = random.choice(np.argwhere(grid!=2))
-                self.path = astar2d(pos, self.evade_goal, cost)
+            if self.target_goal is None:
+                self.target_goal = random.choice(np.argwhere(grid!=2))
+                self.path = astar2d(pos, self.target_goal, cost)
 
             if self.path is None or len(self.path)<=1:
                 self.mode = MOVE2GOAL
-                self.evade_goal = None
+                self.target_goal = None
                 self.path = None
 
         if self.mode == MOVE2GOAL:

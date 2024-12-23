@@ -1,41 +1,37 @@
-from .agents.evader import Evader
+from .agents.target import Target
 from .agents.pursuer import Pursuer
-from multigrid.envs.pursuer import PursuerEnv
-from time import sleep
-import numpy as np
 
-base_grid = np.load("gr_pursuer/custom_grids/grid1.npy")
-env = PursuerEnv(agent_view_size=5, base_grid=base_grid, render_mode='human')
-while True:
+import numpy as np
+import pandas as pd
+from time import sleep
+from multigrid.envs.pursuer import PursuerEnv
+
+
+scenarios = pd.read_csv("scenarios.csv")
+
+for idx, scenario in scenarios.iterrows():
+
+   base_grid = np.array(eval(scenario["base_grid"]))
+   goals = eval(scenario["goals"])
+   env = PursuerEnv(size=32, agent_view_size=5, base_grid=base_grid, 
+                    goals=goals, render_mode='human')
    env.reset()
 
    observations, infos = env.reset()
-   # observations = [{"grid": env.grid.state, 
-   #                  "observation": observations[i], 
-   #                  "pos": agent.pos, "dir": agent.dir} 
-   #                for i, agent in enumerate(env.agents)]
 
-   pursuer = Pursuer(env.pursuer, env.goals)
-   evader = Evader(env.evader, env.goal)
+   pursuer = Pursuer(env.observer, env.goals)
+   target = Target(env.target, env.goal)
 
    while not env.is_done():  
 
       actions = {
          pursuer.agent.index: pursuer.compute_action(observations[0]),
-         evader.agent.index: evader.compute_action(observations[1])
+         target.agent.index: target.compute_action(observations[1])
       }
       observations, rewards, terminations, truncations, infos = env.step(actions)
-
-      # observations = [{"grid": env.grid.state, "pos": agent.pos, "dir": agent.dir} 
-      #                for agent in env.agents]
-      
-      # print(pursuer.prob_dict)
 
       probs = pursuer.prob_dict
       probs = " ".join([f"{env.POS2COLOR[k]}: {v:.2f}   " for k, v in probs.items()])
       env.mission = probs
-
-      # if pursuer.agent.state.terminated or evader.agent.state.terminated:
-      #    break
 
       sleep(0.3)
