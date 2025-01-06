@@ -74,10 +74,13 @@ class Pursuer(BaseAgent):
         dir_vec_ = None
         # EXE MODE BEHAVIOUR
         if self.mode == TRACK:
-            last_target_obs = self.target_observations[-1]
-            step, target_pos, target_dir = last_target_obs
-            dir_vec_ = DIR_TO_VEC[target_dir]
-            path = astar2d(pos, target_pos, cost)
+            if len(self.target_observations) > 0:
+                last_target_obs = self.target_observations[-1]
+                step, target_pos, target_dir = last_target_obs
+                dir_vec_ = DIR_TO_VEC[target_dir]
+                path = astar2d(pos, target_pos, cost)
+            else:
+                return Action.right
 
         elif self.mode == MOVE2GOAL:
             path = astar2d(pos, self.infer_goal, cost)
