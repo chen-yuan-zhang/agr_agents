@@ -11,8 +11,6 @@ from multigrid.envs.pursuer import PursuerEnv
 def run(base_grid=None, goals=None):
    env = PursuerEnv(size=32, agent_view_size=5, base_grid=base_grid, 
                      goals=goals, render_mode='human')
-   env.reset()
-
    observations, infos = env.reset()
 
    pursuer = Pursuer(env.observer, env.goals)
