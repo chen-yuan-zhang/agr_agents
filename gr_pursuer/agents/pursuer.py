@@ -16,6 +16,7 @@ class Pursuer(BaseAgent):
         super().__init__(agent)
 
         self.goals = goals
+        self.goal_costs = None
         self.start = None
         self.prob_dict = None
         self.agent.can_overlap = True
@@ -45,6 +46,16 @@ class Pursuer(BaseAgent):
         probs = { g:p for g, p in zip(self.goals, normalized_probs)}
 
         return infer_goal, probs
+    
+    def compute_target_paths(self, target_pos, cost):
+        paths = []
+        costs = []
+
+        for goal in self.goals:
+            path = astar2d(target_pos, goal, cost)
+            costs.append(len(path))
+
+        return paths, costs
 
     def compute_action(self, obs):
 
@@ -63,9 +74,9 @@ class Pursuer(BaseAgent):
             target_pos = obs["target_pos"]
             target_dir = obs["target_dir"]
             self.infer_goal, self.prob_dict = self.compute_gr(target_pos, cost)
+            target_paths, target_costs = self.compute_target_paths(target_pos, cost)
 
-            self.target_observations.append((self.step, target_pos, target_dir))
-            # print(self.target_observations)
+            self.target_observations.append((self.step, target_pos, target_dir, target_paths, target_costs))
 
             if len(self.target_observations) > 3 and max((self.prob_dict).values())>0.8:
                 self.mode = MOVE2GOAL
@@ -76,7 +87,7 @@ class Pursuer(BaseAgent):
         if self.mode == TRACK:
             if len(self.target_observations) > 0:
                 last_target_obs = self.target_observations[-1]
-                step, target_pos, target_dir = last_target_obs
+                step, target_pos, target_dir, target_paths, target_costs = last_target_obs
                 dir_vec_ = DIR_TO_VEC[target_dir]
                 path = astar2d(pos, target_pos, cost)
             else:
@@ -112,8 +123,6 @@ class Pursuer(BaseAgent):
                     action = Action.right
                 else:
                     action = Action.left
-
- 
         
         return action
 

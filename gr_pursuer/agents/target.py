@@ -12,14 +12,23 @@ MOVE2GOAL = 1
 
 class Target(BaseAgent):
 
-    def __init__(self, agent, goal) -> None:
+    def __init__(self, env, hidden_cost=None, enable_hidden_cost=False) -> None:
 
-        super().__init__(agent)
+        super().__init__(env.target)
     
-        self.goal = goal
-        self.target_goal = None
+        self.goal = env.goal
+        self.goals = env.goals
+        self.evasion_goal = None
         self.path = None
         self.agent.can_overlap = False
+
+        self.enable_hidden_cost = enable_hidden_cost
+        if self.enable_hidden_cost and hidden_cost is None:
+            self.hidden_cost = (np.random.random((env.width, env.height)) > 0.5).astype(int)
+        elif self.enable_hidden_cost and hidden_cost is not None:
+            self.hidden_cost = self.hidden_cost
+        else:
+            self.hidden_cost = np.zeros((env.width, env.height))
 
         self.mode = MOVE2GOAL
 
@@ -29,7 +38,9 @@ class Target(BaseAgent):
         pos = list(obs["pos"])
         dir = np.array(obs["dir"])
         dir_vec = DIR_TO_VEC[dir]
-        cost = (grid==2).astype(int)*1000
+            
+
+        cost = (grid==2).astype(int)*1000 + self.hidden_cost*100
 
         if self.path is not None and pos in self.path:
             index = self.path.index(pos)
@@ -39,21 +50,20 @@ class Target(BaseAgent):
                 if self.mode == EVADE:
                     self.mode = MOVE2GOAL
 
-
         if self.mode == EVADE:
             # Choose a random position from the grid and move to that position
-            if self.target_goal is None:
-                self.target_goal = random.choice(np.argwhere(grid!=2))
-                self.path = astar2d(pos, self.target_goal, cost)
+            if self.evasion_goal is None:
+                self.evasion_goal = random.choice(np.argwhere(grid!=2))
+                self.path = astar2d(pos, self.evasion_goal, cost)
 
             if self.path is None or len(self.path)<=1:
                 self.mode = MOVE2GOAL
-                self.target_goal = None
+                self.evasion_goal = None
                 self.path = None
 
         if self.mode == MOVE2GOAL:
             if self.path is None or pos not in self.path:
-                self.path = astar2d(pos, self.goal, cost)        
+                self.path = astar2d(pos, self.goal, cost)       
                 
         if pos in self.path:
             index = self.path.index(pos)
@@ -63,15 +73,11 @@ class Target(BaseAgent):
         if not self.path:
             return Action.right
 
-        # print(self.path[index+1:])
-        # if len()
         next_pos = np.array(self.path[index+1])
-        # print(f"Next pos: {next_pos}")
         dir_vec_ = next_pos - np.array(pos)
 
         if (dir_vec_==dir_vec).all():
             action = Action.forward
-            # self.path = self.path[index+1:]
         else:
             n_dir = len(DIR_TO_VEC)
             dir_vec_opt = DIR_TO_VEC[(dir+1)%n_dir]
