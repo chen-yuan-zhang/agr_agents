@@ -12,25 +12,22 @@ MOVE2GOAL = 1
 
 class Target(BaseAgent):
 
-    def __init__(self, env, hidden_cost=None, enable_hidden_cost=False) -> None:
+    def __init__(self, env) -> None:
 
         super().__init__(env.target)
     
+        self.agent.name = "Target"
         self.goal = env.goal
         self.goals = env.goals
         self.evasion_goal = None
         self.path = None
         self.agent.can_overlap = False
 
-        self.enable_hidden_cost = enable_hidden_cost
-        if self.enable_hidden_cost and hidden_cost is None:
-            self.hidden_cost = (np.random.random((env.width, env.height)) > 0.5).astype(int)
-        elif self.enable_hidden_cost and hidden_cost is not None:
-            self.hidden_cost = self.hidden_cost
-        else:
-            self.hidden_cost = np.zeros((env.width, env.height))
+        if env.hidden_cost is not None:
+            self.hidden_cost = env.hidden_cost
 
         self.mode = MOVE2GOAL
+
 
     def compute_action(self, obs):
 
@@ -39,7 +36,6 @@ class Target(BaseAgent):
         dir = np.array(obs["dir"])
         dir_vec = DIR_TO_VEC[dir]
             
-
         cost = (grid==2).astype(int)*1000 + self.hidden_cost*100
 
         if self.path is not None and pos in self.path:
@@ -70,8 +66,9 @@ class Target(BaseAgent):
         else:
             print(f"Error: pos {pos} not in path {self.path}")
 
-        if not self.path:
-            return Action.right
+        if len(self.path) <= index+1:
+            print("Target: Path not processed")
+            return None
 
         next_pos = np.array(self.path[index+1])
         dir_vec_ = next_pos - np.array(pos)

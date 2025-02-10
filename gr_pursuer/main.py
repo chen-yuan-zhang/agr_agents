@@ -1,5 +1,5 @@
 from .agents.target import Target
-from .agents.pursuer import Pursuer
+from .agents.observer import Observer
 
 import argparse
 import numpy as np
@@ -9,31 +9,35 @@ from multigrid.envs.goal_prediction import GREnv
 
 
 def run(base_grid=None, goals=None, hidden_cost=None):
-   env = GREnv(size=32, agent_view_size=5, base_grid=base_grid, 
-                     goals=goals, render_mode='human')
+   env = GREnv(size=32, base_grid=base_grid, 
+               see_through_walls=[False, True],
+               agent_view_size=[5, 3],
+                     goals=goals, hidden_cost=hidden_cost, 
+                     enable_hidden_cost=hidden_cost is not None, 
+                     render_mode='human')
    observations, infos = env.reset()
 
    # Green
-   pursuer = Pursuer(env.observer, env.goals)
+   observer = Observer(env)
    # Red
-   enable_hidden_cost = hidden_cost is not None
-   target = Target(env, hidden_cost, enable_hidden_cost=enable_hidden_cost)
+   target = Target(env)
+
+   agents = [observer, target]
 
    while not env.is_done():  
+      actions = {}
+      for i, agent in enumerate(agents):
+         action = agent.compute_action(observations[i])
+         if action is not None:
+            actions[agent.agent.index] = action
 
-      actions = {
-         pursuer.agent.index: pursuer.compute_action(observations[0]),
-         target.agent.index: target.compute_action(observations[1])
-      }
-      # print(actions,  pursuer.agent.index, target.agent.index)
       observations, rewards, terminations, truncations, infos = env.step(actions)
 
-      probs = pursuer.prob_dict
+      probs = observer.prob_dict
       if probs is not None:
          probs = " ".join([f"{env.POS2COLOR[k]}: {v:.2f}   " for k, v in probs.items()])
       else:
          probs = " None "
-         sleep(10)
 
       env.mission = probs
 
@@ -47,6 +51,7 @@ def main(dataset=None):
 
       for idx, scenario in scenarios.iterrows():
 
+         print(f"Scenario {idx}")
          base_grid = np.array(eval(scenario["base_grid"]))
          goals = eval(scenario["goals"])
          hidden_cost = np.array(eval(scenario["hidden_cost"]))

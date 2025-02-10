@@ -1,4 +1,22 @@
 from setuptools import find_packages, setup
+# from pybind11.setup_helpers import Pybind11Extension, build_ext
+# 
+package_name = 'maneuverNode'
+
+# ext_modules = [
+#     # Pybind11Extension(
+#     #     "python_example",
+#     #     ["maneuverNode/astar/src/main.cpp"],
+#     #     # Example: passing in the version to the compiled code
+#     # ),
+#     Pybind11Extension(
+#         "cstar",
+#         ["maneuverNode/castar/src/main.cpp"],
+#         # include_dirs=['/home/crarojasca/Downloads/eigen'],
+#         # Example: passing in the version to the compiled code
+#     ),
+# ]
+
 
 package_name = 'gr_pursuer'
 

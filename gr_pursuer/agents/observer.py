@@ -9,13 +9,14 @@ from multigrid.core.actions import Action
 TRACK = 0
 MOVE2GOAL = 1
 
-class Pursuer(BaseAgent):
+class Observer(BaseAgent):
 
-    def __init__(self, agent, goals):
+    def __init__(self, env):
 
-        super().__init__(agent)
+        super().__init__(env.observer)
 
-        self.goals = goals
+        self.agent.name = "Observer"
+        self.goals = env.goals
         self.goal_costs = None
         self.start = None
         self.prob_dict = None
@@ -26,6 +27,8 @@ class Pursuer(BaseAgent):
 
         self.infer_goal = None
         self.mode = TRACK
+
+        self.agent.reported_goal = None
 
     def compute_gr(self, evader_pos, cost):
         current_dis = len(astar2d(self.start, evader_pos, cost)) - 1
@@ -64,7 +67,9 @@ class Pursuer(BaseAgent):
         pos = list(obs["pos"])
         dir = np.array(obs["dir"])
         dir_vec = DIR_TO_VEC[dir]
-        cost = (grid==-1).astype(int)*1000
+
+        # cost = (grid==-1).astype(int)*1000
+        cost = np.zeros((grid.shape))
 
         if self.start is None:
             self.start = pos
@@ -79,7 +84,11 @@ class Pursuer(BaseAgent):
             self.target_observations.append((self.step, target_pos, target_dir, target_paths, target_costs))
 
             if len(self.target_observations) > 3 and max((self.prob_dict).values())>0.8:
-                self.mode = MOVE2GOAL
+                max_idx = np.argmax((self.prob_dict).values())
+                self.agent.reported_goal = self.goals[max_idx]
+                
+                return Action.done
+
 
         path = None
         dir_vec_ = None
@@ -91,15 +100,14 @@ class Pursuer(BaseAgent):
                 dir_vec_ = DIR_TO_VEC[target_dir]
                 path = astar2d(pos, target_pos, cost)
             else:
+                print("Target: Lost Track")
                 return Action.right
 
         elif self.mode == MOVE2GOAL:
             path = astar2d(pos, self.infer_goal, cost)
 
-        if len(path)<2 or path is None:
-            return Action.right
-
-        elif len(path)<2 and dir_vec_ is not None:
+        
+        if len(path)<=1 and dir_vec_ is not None:
             n_dir = len(DIR_TO_VEC)
             dir_vec_curr = DIR_TO_VEC[(dir+1)%n_dir]
 
@@ -107,6 +115,11 @@ class Pursuer(BaseAgent):
                 action = Action.right
             else:
                 action = Action.left
+
+        elif len(path)<2 or path is None:
+            print("Target: Path not processed")
+            return Action.right
+
 
         else:            
 

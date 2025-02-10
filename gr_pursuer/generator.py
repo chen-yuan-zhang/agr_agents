@@ -2,7 +2,7 @@ import random
 import argparse
 import pandas as pd
 from .astar import astar2d
-from multigrid.envs.pursuer import PursuerEnv
+from multigrid.envs.goal_prediction import GREnv
 
 from .agents.target import Target
 
@@ -14,15 +14,12 @@ def main(nLayouts, nScenarios, enableHiddenCost, output):
     dataset = pd.DataFrame(columns=["layout", "scenario", "observer_pos", "target_pos", "observer_dir", "target_dir", "goals", "target_goal", "cost"])
 
     for i in range(nLayouts):
-        env = PursuerEnv(size=size, agent_view_size=5, base_grid=None, render_mode=None)
+        env = GREnv(size=size, agent_view_size=5, base_grid=None, render_mode=None)
         env.reset()
         base_grid = env.base_grid
 
-
-        target = Target(env, enable_hidden_cost=enableHiddenCost)
-
         for j in range(nScenarios):
-            env = PursuerEnv(size=32, agent_view_size=5, base_grid=base_grid, render_mode=None)
+            env = GREnv(size=32, agent_view_size=5, base_grid=base_grid, render_mode=None)
             env.reset()
 
             goals = env.goals
@@ -35,7 +32,7 @@ def main(nLayouts, nScenarios, enableHiddenCost, output):
             local_data = pd.DataFrame([{"layout": i, "scenario": j, "observer_pos": env.observer.pos, "target_pos": env.target.pos, 
                                         "observer_dir": env.observer.dir, "target_dir": env.target.dir,
                                         "goals": goals, "target_goal": target_goal, "cost": cost, "base_grid": base_grid.tolist(),
-                                        "hidden_cost": target.hidden_cost.tolist()}])
+                                        "hidden_cost": env.hidden_cost.tolist()}])
             dataset = pd.concat([dataset, local_data], ignore_index=True)
 
     dataset.to_csv(output, index=False)
