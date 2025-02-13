@@ -27,7 +27,7 @@ def main(nLayouts, nScenarios, enableHiddenCost, output):
 
             cost = []
             for goal in goals:
-                cost.append(len(astar2d(env.observer.pos, goal, base_grid)) - 1)
+                cost.append(len(astar2d((env.target.pos, env.target.dir), goal, env, env.hidden_cost)) - 1)
 
             local_data = pd.DataFrame([{"layout": i, "scenario": j, "observer_pos": env.observer.pos, "target_pos": env.target.pos, 
                                         "observer_dir": env.observer.dir, "target_dir": env.target.dir,

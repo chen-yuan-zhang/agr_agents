@@ -1,5 +1,5 @@
 from .agents.target import Target
-from .agents.observer import Observer
+from .agents.observer import Observer, BeliefUpdateObserver
 
 import argparse
 import numpy as np
@@ -18,7 +18,7 @@ def run(base_grid=None, goals=None, hidden_cost=None):
    observations, infos = env.reset()
 
    # Green
-   observer = Observer(env)
+   observer = BeliefUpdateObserver(env)
    # Red
    target = Target(env)
 
@@ -33,15 +33,15 @@ def run(base_grid=None, goals=None, hidden_cost=None):
 
       observations, rewards, terminations, truncations, infos = env.step(actions)
 
-      probs = observer.prob_dict
-      if probs is not None:
-         probs = " ".join([f"{env.POS2COLOR[k]}: {v:.2f}   " for k, v in probs.items()])
-      else:
-         probs = " None "
+      # probs = observer.prob_dict
+      # if probs is not None:
+      #    probs = " ".join([f"{env.POS2COLOR[k]}: {v:.2f}   " for k, v in probs.items()])
+      # else:
+      #    probs = " None "
 
-      env.mission = probs
+      # env.mission = probs
 
-      sleep(0.3)
+      # sleep(0.3)
 
 
 def main(dataset=None):
@@ -61,6 +61,7 @@ def main(dataset=None):
 
       while True:
          run()
+         break
       
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Main file for running the scenario")

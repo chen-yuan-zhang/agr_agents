@@ -15,7 +15,7 @@ class Target(BaseAgent):
     def __init__(self, env) -> None:
 
         super().__init__(env.target)
-    
+        self.env = env
         self.agent.name = "Target"
         self.goal = env.goal
         self.goals = env.goals
@@ -36,10 +36,10 @@ class Target(BaseAgent):
         dir = np.array(obs["dir"])
         dir_vec = DIR_TO_VEC[dir]
             
-        cost = (grid==2).astype(int)*1000 + self.hidden_cost*100
+        cost = self.hidden_cost if hasattr(self, "hidden_cost") else None
 
-        if self.path is not None and pos in self.path:
-            index = self.path.index(pos)
+        if self.path is not None and pos + [int(dir)] in self.path:
+            index = self.path.index(pos + [int(dir)])
             if index == len(self.path)-1:
                 self.path = None
 
@@ -50,7 +50,7 @@ class Target(BaseAgent):
             # Choose a random position from the grid and move to that position
             if self.evasion_goal is None:
                 self.evasion_goal = random.choice(np.argwhere(grid!=2))
-                self.path = astar2d(pos, self.evasion_goal, cost)
+                self.path = astar2d(pos, self.evasion_goal, env, cost)
 
             if self.path is None or len(self.path)<=1:
                 self.mode = MOVE2GOAL
@@ -59,10 +59,13 @@ class Target(BaseAgent):
 
         if self.mode == MOVE2GOAL:
             if self.path is None or pos not in self.path:
-                self.path = astar2d(pos, self.goal, cost)       
+                self.path = astar2d((pos, dir), self.goal, self.env, cost)  
+                index = 0  
+
+
                 
-        if pos in self.path:
-            index = self.path.index(pos)
+        if pos + [int(dir)] in self.path:
+            index = self.path.index(pos + [int(dir)])
         else:
             print(f"Error: pos {pos} not in path {self.path}")
 
@@ -70,16 +73,13 @@ class Target(BaseAgent):
             print("Target: Path not processed")
             return None
 
-        next_pos = np.array(self.path[index+1])
-        dir_vec_ = next_pos - np.array(pos)
+        next_pos = self.path[index+1][:2]
+        next_dir = self.path[index+1][2]
 
-        if (dir_vec_==dir_vec).all():
+        if next_pos!=pos:
             action = Action.forward
         else:
-            n_dir = len(DIR_TO_VEC)
-            dir_vec_opt = DIR_TO_VEC[(dir+1)%n_dir]
-
-            if (dir_vec_==dir_vec_opt).all():
+            if next_dir == (dir+1)%4:
                 action = Action.right
             else:
                 action = Action.left

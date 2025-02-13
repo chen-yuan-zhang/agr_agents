@@ -5,3 +5,4 @@ class BaseAgent():
 
     def compute_action(self, obs):
         raise NotImplementedError
+    

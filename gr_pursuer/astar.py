@@ -1,6 +1,7 @@
 import math
 import heapq
 from collections import namedtuple
+import numpy as np
 
 Tile = namedtuple("Tile", ["i", "j"])
 Voxel = namedtuple("Voxel", ["i", "j", "k"])
@@ -39,7 +40,7 @@ def get_path(label):
     path = []
     while label is not None:
         
-        path.append(list(label.pos))
+        path.append(list(label.pos) + list([label.dir]))
         label = label.parent
 
     path.reverse()
@@ -114,21 +115,23 @@ def astar3d(start, target, cost, voxel_grid, heuristic=heuristic_manhattan, fly_
     return None
 
 
-def astar2d(start, target, cost, heuristic=heuristic_manhattan, max_iter=None):
+def astar2d(start_state, target, env, cost = None, heuristic=heuristic_manhattan, max_iter=None):
 
 
-    X,Y = cost.shape
+    X,Y = env.width, env.height
+    start_pos, dir = start_state[0], start_state[1]
+    if dir not in range(4):
+        raise ValueError("Direction must be within the range [0, 3]")
 
-
-    start = Tile(*start)
+    start = Tile(*start_pos)
     target = Tile(*target)
 
-    next = create_root_label(start, target, heuristic, dir=(0, 0))
+    next = create_root_label(start, target, heuristic, dir=dir)
 
     pq = []
     heapq.heappush(pq, (next.f, next))
     found = None
-    visited = {}
+    visited = set([(int(next.pos.i), int(next.pos.j), int(dir))])
     iter = 0
 
     while pq:
@@ -142,18 +145,22 @@ def astar2d(start, target, cost, heuristic=heuristic_manhattan, max_iter=None):
         if max_iter and iter>max_iter:
             return None
 
-        directions = [(1, 0), (-1, 0), (0, 1), (0, -1)]
+        successors = get_successor(env, (current.pos.i, current.pos.j), current.dir)
 
-        for dir in directions:
+        for succ in successors:
 
-            dx, dy = dir
-            next_pos = Tile(current.pos.i + dx, current.pos.j + dy)
+            next_pos, next_dir = succ
+            next_pos = Tile(*next_pos)
             
-            if 0 <= next_pos.i < X and 0 <= next_pos.j < Y and next_pos not in visited:
+            if 0 <= next_pos.i < X and 0 <= next_pos.j < Y and (int(next_pos.i),int(next_pos.j), next_dir) not in visited:
 
-                visited[next_pos] = True
-                edge_cost = cost[next_pos.i, next_pos.j] #+ step_cost + turn_cost/4
-                next = extend(current, next_pos, target, edge_cost, heuristic, dir)
+                visited.add((int(next_pos.i), int(next_pos.j), next_dir))
+                if isinstance(cost, np.ndarray):
+                    edge_cost = cost[next_pos.j, next_pos.i]
+                else:
+                    edge_cost = 1
+
+                next = extend(current, next_pos, target, edge_cost, heuristic, next_dir)
 
                 heapq.heappush(pq, (next.f, next))
 
@@ -165,3 +172,50 @@ def astar2d(start, target, cost, heuristic=heuristic_manhattan, max_iter=None):
     
     return None
 
+
+def get_successor(env, pos, dir):
+    """
+    Generate the next position and direction given the current position and direction.
+    
+    Parameters:
+    env (object): The environment object containing the grid and other relevant information.
+    pos (tuple): The current position (x, y).
+    dir (int): The current direction (0: east, 1: south, 2: west, 3: north).
+    
+    Returns:
+    list: A list of tuples representing the next position and direction.
+    """
+    successors = []
+    x, y = pos
+    dir = int(dir)
+
+    # Define the direction vectors for east, south, west, and north
+    DIR_TO_VEC_tmp = {
+        0: (1, 0),  # east
+        1: (0, 1),  # south
+        2: (-1, 0), # west
+        3: (0, -1)  # north
+    }
+
+    # Define the possible actions: forward, turn right, turn left
+    actions = [
+        (0, 0),  # forward
+        (1, 1),  # turn right
+        (2, -1)  # turn left
+    ]
+
+    for action, turn in actions:
+        if action == 0:  # forward
+            dx, dy = DIR_TO_VEC_tmp[dir]
+            new_pos = (x + dx, y + dy)
+            new_dir = dir
+        else:  # turn right or left
+            new_pos = pos
+            new_dir = (dir + turn) % 4
+
+        # Check if the new position is within the grid bounds and not an obstacle
+        if 0 <= new_pos[0] < env.width and 0 <= new_pos[1] < env.height and env.base_grid[new_pos[0], new_pos[1]] == 0:
+            successors.append((new_pos, new_dir))
+
+
+    return successors
