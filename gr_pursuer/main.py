@@ -5,7 +5,23 @@ import argparse
 import numpy as np
 import pandas as pd
 from time import sleep
+from .astar import astar2d
 from multigrid.envs.goal_prediction import GREnv
+
+def get_data(env):
+   base_grid = env.base_grid
+   goals = env.goals
+   target_goal = env.goal
+
+   cost = []
+   for goal in goals:
+         cost.append(len(astar2d(env.observer.pos, goal, base_grid)) - 1)
+
+   data = {"observer_pos": env.observer.pos, "target_pos": env.target.pos, 
+            "observer_dir": env.observer.dir, "target_dir": env.target.dir,
+            "goals": goals, "target_goal": target_goal, "cost": cost, "base_grid": base_grid.tolist(),
+            "hidden_cost": env.hidden_cost.tolist()}
+   return data
 
 
 def run(base_grid=None, goals=None, hidden_cost=None):
@@ -21,10 +37,12 @@ def run(base_grid=None, goals=None, hidden_cost=None):
    observer = Observer(env)
    # Red
    target = Target(env)
-
    agents = [observer, target]
 
+   data = [get_data(env)]
+
    while not env.is_done():  
+      step = {}
       actions = {}
       for i, agent in enumerate(agents):
          action = agent.compute_action(observations[i])
@@ -41,13 +59,17 @@ def run(base_grid=None, goals=None, hidden_cost=None):
 
       env.mission = probs
 
+      data.append(get_data(env))
+
       sleep(0.3)
 
+   return data
 
-def main(dataset=None):
 
-   if dataset is not None:
-      scenarios = pd.read_csv(dataset)
+def main(scenarios=None):
+
+   if scenarios is not None:
+      scenarios = pd.read_csv(scenarios)
 
       for idx, scenario in scenarios.iterrows():
 
@@ -64,7 +86,7 @@ def main(dataset=None):
       
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Main file for running the scenario")
-    parser.add_argument("--dataset", type=str, default=None, help="csv file to run as dataset")
+    parser.add_argument("--scenarios", type=str, default=None, help="csv file to run as scenarios")
 
     args = parser.parse_args()
-    main(args.dataset)
+    main(args.scenarios)
