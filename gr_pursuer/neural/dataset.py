@@ -45,3 +45,21 @@ class TargetDataset(Dataset):
         }
 
         return item
+    
+# Preprocess Data
+def preprocess_data(df, observation_window, size):
+    # Filter out instances with less than observation_window observations
+    df = df.groupby(['layout', 'scenario']).filter(lambda x: len(x) > observation_window).reset_index(drop=True)
+    # Format the data
+    one_hot_encode = lambda d: np.eye(4, dtype=np.int8)[d]
+    df['target_x'], df['target_y'] = zip(*df['target_pos'].apply(lambda pos: eval(pos)))
+    df['target_x'] = df['target_x'] / size
+    df['target_y'] = df['target_y'] / size
+    df['target_pos_encoded'] = df['target_pos'].apply(lambda grid: np.array(eval(grid), dtype=np.int8).flatten()/size)
+    df['direction'] = df['target_dir'].apply(one_hot_encode).tolist()
+    df['action_encoding'] = df['action'].astype(int).apply(one_hot_encode).tolist()
+    df['grid_encoding'] = df['base_grid'].apply(lambda grid: np.array(eval(grid), dtype=np.int8).flatten())
+    df['goals_encoding'] = df['goals'].apply(lambda goals: np.array(eval(goals), dtype=np.int8).flatten()/size)
+    df['instance_end'] = df['step'].diff(-1).ge(0).astype(int)  # Indicate when an instance resets
+    df.loc[df.index.stop-1, 'instance_end'] = 1
+    return df
