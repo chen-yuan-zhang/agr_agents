@@ -14,12 +14,14 @@ def main(nLayouts, nScenarios, enableHiddenCost, output):
     dataset = pd.DataFrame(columns=["layout", "scenario", "observer_pos", "target_pos", "observer_dir", "target_dir", "goals", "target_goal", "cost"])
 
     for i in range(nLayouts):
-        env = GREnv(size=size, agent_view_size=5, base_grid=None, render_mode=None)
+        env = GREnv(size=size, agent_view_size=[5, 3], see_through_walls=[False, True], 
+                    base_grid=None, render_mode=None)
         env.reset()
         base_grid = env.base_grid
 
         for j in range(nScenarios):
-            env = GREnv(size=32, agent_view_size=5, base_grid=base_grid, render_mode=None)
+            env = GREnv(size=32, agent_view_size=[5, 3], see_through_walls=[False, True], 
+                        base_grid=base_grid, render_mode=None)
             env.reset()
 
             goals = env.goals
@@ -39,8 +41,8 @@ def main(nLayouts, nScenarios, enableHiddenCost, output):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Script to generate scenarios")
-    parser.add_argument("--nLayouts", type=int, default=10, help="Number of Layouts")
-    parser.add_argument("--nScenarios", type=int, default=5, help="Number of scenarios per layout")
+    parser.add_argument("--nLayouts", type=int, default=50, help="Number of Layouts")
+    parser.add_argument("--nScenarios", type=int, default=10, help="Number of scenarios per layout")
     parser.add_argument("--enableHiddenCost", type=bool, default=False, help="Number of scenarios per layout")
     parser.add_argument("--output", type=str, default="scenarios.csv", help="Dataset output directory")
 

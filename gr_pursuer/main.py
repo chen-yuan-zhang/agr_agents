@@ -8,7 +8,7 @@ from time import sleep
 from .astar import astar2d
 from multigrid.envs.goal_prediction import GREnv
 
-def get_data(env):
+def get_data(env, step, action):
    base_grid = env.base_grid
    goals = env.goals
    target_goal = env.goal
@@ -17,10 +17,13 @@ def get_data(env):
    for goal in goals:
          cost.append(len(astar2d(env.observer.pos, goal, base_grid)) - 1)
 
-   data = {"observer_pos": env.observer.pos, "target_pos": env.target.pos, 
+   data = {
+            "step": step,
+            "observer_pos": env.observer.pos, "target_pos": env.target.pos, 
             "observer_dir": env.observer.dir, "target_dir": env.target.dir,
-            "goals": goals, "target_goal": target_goal, "cost": cost, "base_grid": base_grid.tolist(),
-            "hidden_cost": env.hidden_cost.tolist()}
+            "action": action, 
+            "base_grid": base_grid.tolist()}
+   
    return data
 
 
@@ -28,9 +31,10 @@ def run(base_grid=None, goals=None, hidden_cost=None):
    env = GREnv(size=32, base_grid=base_grid, 
                see_through_walls=[False, True],
                agent_view_size=[5, 3],
-                     goals=goals, hidden_cost=hidden_cost, 
-                     enable_hidden_cost=hidden_cost is not None, 
-                     render_mode='human')
+               goals=goals, hidden_cost=hidden_cost, 
+               enable_hidden_cost=hidden_cost is not None, 
+               # render_mode='human'
+   )
    observations, infos = env.reset()
 
    # Green
@@ -39,15 +43,19 @@ def run(base_grid=None, goals=None, hidden_cost=None):
    target = Target(env)
    agents = [observer, target]
 
-   data = [get_data(env)]
+   # state_data = get_data(env, 0)
+   # state_data["step"] = 0
+   data = []
 
+   step = 1
    while not env.is_done():  
-      step = {}
       actions = {}
       for i, agent in enumerate(agents):
          action = agent.compute_action(observations[i])
          if action is not None:
             actions[agent.agent.index] = action
+
+      data.append(get_data(env, step, actions.get(1, None)))
 
       observations, rewards, terminations, truncations, infos = env.step(actions)
 
@@ -58,16 +66,16 @@ def run(base_grid=None, goals=None, hidden_cost=None):
          probs = " None "
 
       env.mission = probs
-
-      data.append(get_data(env))
-
-      sleep(0.3)
+      step+=1
+      # sleep(0.3)
 
    return data
 
 
 def main(scenarios=None):
 
+
+   dataset = pd.DataFrame()
    if scenarios is not None:
       scenarios = pd.read_csv(scenarios)
 
@@ -78,7 +86,14 @@ def main(scenarios=None):
          goals = eval(scenario["goals"])
          hidden_cost = np.array(eval(scenario["hidden_cost"]))
 
-         run(base_grid=base_grid, goals=goals, hidden_cost=hidden_cost)
+         data = run(base_grid=base_grid, goals=goals, hidden_cost=hidden_cost)
+         data = pd.DataFrame(data)
+         data["scenario"] = scenario["scenario"]
+         data["layout"] = scenario["layout"]
+
+         dataset = pd.concat([dataset, data], ignore_index=True)
+
+      dataset.to_csv("dataset.csv", index=False)
    else:
 
       while True:
