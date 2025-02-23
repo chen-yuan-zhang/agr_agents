@@ -1,3 +1,6 @@
 __pycache__
 *egg-info*
 *.csv
+neural/models/*
+*logs*
+*wandb*
