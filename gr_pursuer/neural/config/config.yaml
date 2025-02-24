@@ -3,7 +3,7 @@ hydra:
     n_jobs: 1
   sweeper:
     params:
-      ++model.observation_window: 5,7,10,12,15,17,20
+      ++model.observation_window: 5,7,11,13,15,17,21
 
 experiment: basicDiscrete
 note: null
@@ -14,11 +14,12 @@ logger:
   wandb_project: gr_pursuer
 
 env:
-  size: 32
+  size: 128
+  enable_hidden_cost: false
 
 data:
-  data_runs_path: gr_pursuer/data/dataset_s{}.csv
-  data_scenarios_path: gr_pursuer/data/scenarios_s{}.csv
+  data_runs_path: gr_pursuer/data/dataset_s{}_h{}.csv
+  data_scenarios_path: gr_pursuer/data/scenarios_s{}_h{}.csv
 
 model:
   save_path: gr_pursuer/neural/models

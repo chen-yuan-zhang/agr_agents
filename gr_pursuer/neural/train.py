@@ -38,6 +38,7 @@ def main(cfg : DictConfig) -> None:
     LR = cfg["model"]["lr"]
     NUM_LAYERS = cfg["model"]["num_layers"]
     NUM_HEADS = cfg["model"]["num_heads"]
+    ENABLE_HIDDEN_COST = int(cfg["env"]["enable_hidden_cost"])
     save_path = cfg["model"]["save_path"]
     keys = ["epoch", "loss_train", "loss_valid"]
 
@@ -52,9 +53,11 @@ def main(cfg : DictConfig) -> None:
     )
 
     # Load the data
-    data_runs = pd.read_csv(cfg["data"]["data_runs_path"])
+    data_runs_path = cfg["data"]["data_runs_path"].format(SIZE, ENABLE_HIDDEN_COST)
+    data_runs = pd.read_csv(data_runs_path)
     data_runs = data_runs[~data_runs['action'].isna()]
-    data_scenarios = pd.read_csv(cfg["data"]["data_scenarios_path"])
+    data_scenarios_path = cfg["data"]["data_scenarios_path"].format(SIZE, ENABLE_HIDDEN_COST)
+    data_scenarios = pd.read_csv(data_scenarios_path)
     data = pd.merge(data_runs, data_scenarios[["layout", "scenario", "goals"]], on=["layout", "scenario"])
 
     # Preprocess the data

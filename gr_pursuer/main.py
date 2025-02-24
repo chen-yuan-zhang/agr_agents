@@ -43,8 +43,6 @@ def run(base_grid=None, goals=None, hidden_cost=None):
    target = Target(env)
    agents = [observer, target]
 
-   # state_data = get_data(env, 0)
-   # state_data["step"] = 0
    data = []
 
    step = 1
@@ -72,12 +70,13 @@ def run(base_grid=None, goals=None, hidden_cost=None):
    return data
 
 
-def main(scenarios=None):
+def main(scenarios_file=None):
 
 
    dataset = pd.DataFrame()
-   if scenarios is not None:
-      scenarios = pd.read_csv(scenarios)
+   if scenarios_file is not None:
+
+      scenarios = pd.read_csv(scenarios_file)
 
       for idx, scenario in scenarios.iterrows():
 
@@ -93,7 +92,11 @@ def main(scenarios=None):
 
          dataset = pd.concat([dataset, data], ignore_index=True)
 
-      dataset.to_csv("dataset.csv", index=False)
+      # Get the name of the file
+      name = scenarios_file.split("/")[-1]
+      params = "_".join(name.split("_")[1:])
+      file_name = f"gr_pursuer/data/dataset_{params}"
+      dataset.to_csv(file_name, index=False)
    else:
 
       while True:
