@@ -3,7 +3,9 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
 
+import os
 import hydra
+import shutil
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
@@ -14,7 +16,7 @@ from sklearn.metrics import f1_score, accuracy_score, precision_score, recall_sc
 
 from .model import TransformerPredictor
 from .logger import Logger, WanDBLogger
-from .dataset import TargetDataset, preprocess_data
+from .dataset import TargetDataset, load_data
 
 
 loggers = {
@@ -23,11 +25,18 @@ loggers = {
 }
 
 metric_funcs = {
-    "f1": lambda y_true, y_pred: f1_score(y_true, y_pred, average="macro"),
+    "f1": lambda y_true, y_pred: f1_score(y_true, y_pred, average="macro", zero_division=0),
     "accuracy": accuracy_score,
-    "precision": lambda y_true, y_pred: precision_score(y_true, y_pred, average="macro"), 
-    "recall": lambda y_true, y_pred: recall_score(y_true, y_pred, average="macro"), 
+    "precision": lambda y_true, y_pred: precision_score(y_true, y_pred, average="macro", zero_division=0), 
+    "recall": lambda y_true, y_pred: recall_score(y_true, y_pred, average="macro", zero_division=0), 
 }
+
+def compute_metrics(y_true, y_pred):
+    metrics = {}
+    for metric in metric_funcs.keys():
+        metrics[metric] = metric_funcs[metric](y_true, y_pred)
+    return metrics
+
 
 @hydra.main(version_base=None, config_path="config", config_name="config")
 def main(cfg : DictConfig) -> None: 
@@ -40,7 +49,7 @@ def main(cfg : DictConfig) -> None:
     NUM_HEADS = cfg["model"]["num_heads"]
     ENABLE_HIDDEN_COST = int(cfg["env"]["enable_hidden_cost"])
     save_path = cfg["model"]["save_path"]
-    keys = ["epoch", "loss_train", "loss_valid"]
+    tmp_epoch_save_path = cfg["model"]["tmp_epoch_save_path"]
 
     # Add additional parameters config:
     parameters = OmegaConf.to_container(cfg, resolve=True)
@@ -49,19 +58,12 @@ def main(cfg : DictConfig) -> None:
     # Initialize the logger
     metrics = ["partition"] + list(metric_funcs.keys())
     logger = loggers[cfg.logger.type](
-        parameters, keys, metrics
+        parameters, show_keys=["epoch", "loss_train", "f1_train", "loss_valid", "f1_valid"]
     )
 
-    # Load the data
-    data_runs_path = cfg["data"]["data_runs_path"].format(SIZE, ENABLE_HIDDEN_COST)
-    data_runs = pd.read_csv(data_runs_path)
-    data_runs = data_runs[~data_runs['action'].isna()]
-    data_scenarios_path = cfg["data"]["data_scenarios_path"].format(SIZE, ENABLE_HIDDEN_COST)
-    data_scenarios = pd.read_csv(data_scenarios_path)
-    data = pd.merge(data_runs, data_scenarios[["layout", "scenario", "goals"]], on=["layout", "scenario"])
-
-    # Preprocess the data
-    data = preprocess_data(data, OBSERVATION_WINDOW, SIZE)
+    
+    data = load_data(cfg, SIZE, OBSERVATION_WINDOW, ENABLE_HIDDEN_COST)
+    
 
     nlayouts = len(data["layout"].unique())
     data.loc[data["layout"]<=nlayouts*0.7, "PARTITION"] = "TRAIN"
@@ -73,6 +75,7 @@ def main(cfg : DictConfig) -> None:
     test_data = data[data["PARTITION"]=="TEST"]
 
     # Datasets
+    print("Loading Data Loaders")
     train_dataset = TargetDataset(train_data, OBSERVATION_WINDOW)
     valid_dataset = TargetDataset(valid_data, OBSERVATION_WINDOW)
 
@@ -94,10 +97,17 @@ def main(cfg : DictConfig) -> None:
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=LR)
 
+    # Create tmp model save folder
+    if not os.path.exists(tmp_epoch_save_path):
+        os.makedirs(tmp_epoch_save_path)
+
     # Training Loop
+    print("Starting training")
+    epoch_stats = []
     for epoch in range(NEPOCHS):
         model.train()
-        total_loss = 0
+        train_loss = 0
+        train_metrics = {k:0 for k in metric_funcs.keys()}
         progress_bar = tqdm(train_dataloader, desc=f"Epoch {epoch+1}", leave=False)
         for batch in progress_bar:
             batch = {k: v.to(device) for k, v in batch.items()}
@@ -106,11 +116,19 @@ def main(cfg : DictConfig) -> None:
             loss = criterion(outputs, batch["action"])
             loss.backward()
             optimizer.step()
-            total_loss += loss.item()
-            progress_bar.set_postfix(loss=loss.item(), avg_loss=total_loss / (progress_bar.n + 1))
+            train_loss += loss.item()
+            progress_bar.set_postfix(loss=loss.item(), avg_loss=train_loss / (progress_bar.n + 1))
+
+            probs = torch.nn.functional.softmax(outputs, dim=1)
+            y_pred = torch.argmax(probs, dim=1).cpu().numpy()
+            y_true = torch.argmax(batch["action"], dim=1).cpu().numpy()
+            train_metrics_batch = compute_metrics(y_true, y_pred)
+            for k in train_metrics.keys():
+                train_metrics[k] += train_metrics_batch[k]
 
         model.eval()
         val_loss = 0
+        val_metrics = {k:0 for k in metric_funcs.keys()}
         with torch.no_grad():
             progress_bar = tqdm(valid_dataloader, desc=f"Epoch {epoch+1}", leave=False)
             for batch in progress_bar:
@@ -119,14 +137,43 @@ def main(cfg : DictConfig) -> None:
                 loss = criterion(outputs, batch["action"]).item() 
                 val_loss += loss 
                 progress_bar.set_postfix(loss=val_loss, avg_loss=val_loss / (progress_bar.n + 1))
-        
-        epoch_log = {"epoch": epoch+1, "loss_train": total_loss/len(train_dataloader), "loss_valid": val_loss/len(valid_dataloader)}
+
+                probs = torch.nn.functional.softmax(outputs, dim=1)
+                y_pred = torch.argmax(probs, dim=1).cpu().numpy()
+                y_true = torch.argmax(batch["action"], dim=1).cpu().numpy()
+                val_metrics_batch = compute_metrics(y_true, y_pred)
+ 
+                for k in val_metrics.keys():
+                    val_metrics[k] += val_metrics_batch[k]
+
+        train_metrics = {k+"_train": v/len(train_dataloader) for k, v in train_metrics.items()}
+        val_metrics = {k+"_valid": v/len(valid_dataloader) for k, v in val_metrics.items()}
+        epoch_log = {
+            "epoch": epoch, 
+            "loss_train": train_loss/len(train_dataloader), 
+            "loss_valid": val_loss/len(valid_dataloader)
+        }
+        epoch_log.update(train_metrics)
+        epoch_log.update(val_metrics)
+        epoch_stats.append(epoch_log)
         logger.log_epoch(epoch_log)
 
-    # Save the model
-    torch.save(model.state_dict(), f"{save_path}/{logger.run_name}.pth")
+        # Save the model
+        torch.save(model.state_dict(), f"{tmp_epoch_save_path}/{epoch_log['epoch']}.pth")
+
+    
+    best_epoch = max(epoch_stats, key=lambda x: x["f1_valid"])["epoch"]
+    # Move model
+    best_model_path = f"{save_path}/{logger.run_name}.pth"
+    os.rename(f"{tmp_epoch_save_path}/{best_epoch}.pth", best_model_path)
+    # Remove tmp folder
+    shutil.rmtree(tmp_epoch_save_path)
+    # # Load the best model
+    model.load_state_dict(torch.load(best_model_path, weights_only=False))
+    # torch.save(model.state_dict(), f"{save_path}/{logger.run_name}.pth")
 
     # Evaluate the model  
+    print("Evaluating the model")
     dataset = TargetDataset(data, OBSERVATION_WINDOW)
     dataloader = DataLoader(dataset, batch_size=32, shuffle=False)
 
@@ -134,7 +181,7 @@ def main(cfg : DictConfig) -> None:
     predictions = []
     for batch in tqdm(dataloader):
         batch = {k: v.to(device) for k, v in batch.items()}
-        pred = model(batch)#.tolist()
+        pred = model(batch)
         pred = torch.nn.functional.softmax(pred, dim=1).detach().cpu().tolist()
         predictions += pred 
 
@@ -146,12 +193,10 @@ def main(cfg : DictConfig) -> None:
         data_pred_p = data_pred[data_pred["PARTITION"] == p]
         y_pred = data_pred_p["pred"].values
         y_true = data_pred_p["action"].astype(int).values
-
+        
         metrics = {"partition": p}
-        for metric in metric_funcs.keys():
-            metrics[metric] = metric_funcs[metric](y_true, y_pred)
+        metrics.update(compute_metrics(y_true, y_pred))
         logger.log_metrics(metrics)
-
 
     logger.close()
     print("FINISHED RUNNING")

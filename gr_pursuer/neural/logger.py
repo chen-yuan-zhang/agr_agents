@@ -12,10 +12,11 @@ from torch.utils.tensorboard import SummaryWriter
 
 
 class Logger():
-    def __init__(self, cfg, columns, metrics) -> None:
+    def __init__(self, cfg, show_keys=None) -> None:
 
-        self.columns = columns
-        self.metrics = metrics
+        self.columns = None
+        self.metrics = None
+        self.show_keys = show_keys 
         # Time run starts
         self.start_time = datetime.now()   
         # Set the run name
@@ -41,25 +42,25 @@ class Logger():
         # Set Files
         ## Episode File
         self.epoch_file_path = os.path.join(self.log_name, 'epochs.csv')  
-        with open(self.epoch_file_path, 'w') as file:
-            epoch_log = writer(file)
-            epoch_log.writerow(
-                columns
-            )
+        
         ## Metrics File
         self.metrics_file_path = os.path.join(self.log_name, 'metrics.csv')
-        with open(self.metrics_file_path, 'w') as file:
-            metrics_log = writer(file)
-            metrics_log.writerow(
-                metrics
-            )
-
-
+        
     def log_epoch(self, data):
+
+        # Create the file if it does not exist
+        if self.columns is None:
+            self.columns = list(data.keys())
+            with open(self.epoch_file_path, 'w') as file:
+                epoch_log = writer(file)
+                epoch_log.writerow(
+                    self.columns
+                )
 
         time = str(datetime.now()-self.start_time)        
             
-        line = " ".join([f"{c}: {data[c]:5f} |" for c in self.columns])
+        line = " ".join([f"{c}: {data[c]:5f} |" for c in self.columns 
+                         if self.show_keys is not None and c in self.show_keys])
         logging.info(line)
             
         with open(self.epoch_file_path, 'a') as file:
@@ -69,6 +70,14 @@ class Logger():
             )
 
     def log_metrics(self, data):
+
+        if self.metrics is None:
+            self.metrics = list(data.keys())
+            with open(self.metrics_file_path, 'w') as file:
+                metrics_log = writer(file)
+                metrics_log.writerow(
+                    self.metrics
+                )
 
         line = " ".join([f"{m}: {data[m]} |" for m in self.metrics])
         logging.info(line)
@@ -107,9 +116,9 @@ class TensorboardLogger(Logger):
 
 class WanDBLogger(Logger):
 
-    def __init__(self, cfg, columns, metrics):
+    def __init__(self, cfg, show_keys):
 
-        super().__init__(cfg, columns, metrics)
+        super().__init__(cfg, show_keys)
 
         project = cfg["logger"]["wandb_project"]
         # start a new wandb run to track this script
