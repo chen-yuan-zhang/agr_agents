@@ -6,3 +6,4 @@ gr_pursuer/neural/models/*
 *wandb*
 multirun/
 outputs/
+gr_pursuer/neural/tmp_models/*

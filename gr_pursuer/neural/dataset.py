@@ -13,7 +13,7 @@ def load_data(cfg, size, observation_window, enable_hidden_cost):
     data_runs = data_runs[~data_runs['action'].isna()]
     data_scenarios_path = cfg["data"]["data_scenarios_path"].format(size, enable_hidden_cost)
     data_scenarios = pd.read_csv(data_scenarios_path)
-    data = pd.merge(data_runs, data_scenarios[["layout", "scenario", "goals"]], on=["layout", "scenario"])
+    data = pd.merge(data_runs, data_scenarios[["layout", "scenario", "goals", "target_goal"]], on=["layout", "scenario"])
 
     # Preprocess the data
     print("Preprocessing data")
@@ -35,6 +35,7 @@ def preprocess_data(df, observation_window, size):
     df['direction'] = df['target_dir'].apply(one_hot_encode).tolist()
     df['action_encoding'] = df['action'].astype(int).apply(one_hot_encode).tolist()
     df['grid_encoding'] = df['base_grid'].apply(lambda grid: np.array(eval(grid), dtype=np.int8).flatten())
+    df['target_goal_encoding'] = df['target_goal'].apply(lambda goals: np.array(eval(goals), dtype=np.int8).flatten()/size)
     df['goals_encoding'] = df['goals'].apply(lambda goals: np.array(eval(goals), dtype=np.int8).flatten()/size)
     df['instance_end'] = df['step'].diff(-1).ge(0).astype(int)  # Indicate when an instance resets
     df.loc[df.index.stop-1, 'instance_end'] = 1
@@ -42,9 +43,10 @@ def preprocess_data(df, observation_window, size):
 
 # Custom Dataset
 class TargetDataset(Dataset):
-    def __init__(self, df, window):
+    def __init__(self, df, window, goal_gt):
         self.df = df
         self.window = window
+        self.goal_gt = goal_gt
         self.index = df.loc[df["step"]>window, ["step"]].reset_index(drop=False)
 
     def __len__(self):
@@ -60,7 +62,7 @@ class TargetDataset(Dataset):
         sequence_data = self.df.loc[step_idx-self.window:step_idx]
         state = sequence_data.apply(join_state, axis=1).tolist()
         grid = step_row['grid_encoding']
-        goals = step_row['goals_encoding']
+        goals = step_row['target_goal_encoding'] if self.goal_gt else step_row['goals_encoding']
         action = step_row['action_encoding']
 
         #"There should be only one instance end in the sequence"
