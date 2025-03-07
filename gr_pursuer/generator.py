@@ -2,9 +2,10 @@ import random
 import argparse
 import pandas as pd
 from tqdm import tqdm
-from .astar import astar2d
+from pathlib import Path
 from multigrid.envs.goal_prediction import GREnv
 
+from .astar import astar2d
 from .agents.target import Target
 
 
@@ -37,15 +38,16 @@ def main(size, nLayouts, nScenarios, enableHiddenCost, output):
                                         "hidden_cost": env.hidden_cost.tolist()}])
             dataset = pd.concat([dataset, local_data], ignore_index=True)
 
+    Path(output.format(size, int(enableHiddenCost)).rsplit("/", 1)[0]).mkdir(parents=True, exist_ok=True)
     dataset.to_csv(output.format(size, int(enableHiddenCost)), index=False)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Script to generate scenarios")
-    parser.add_argument("--nLayouts", type=int, default=50, help="Number of Layouts")
+    parser.add_argument("--nLayouts", type=int, default=1000, help="Number of Layouts")
     parser.add_argument("--size", type=int, default=32, help="Number of scenarios per layout")
     parser.add_argument("--nScenarios", type=int, default=10, help="Number of scenarios per layout")
     parser.add_argument("--enableHiddenCost", type=bool, default=False, help="Number of scenarios per layout")
-    parser.add_argument("--output", type=str, default="gr_pursuer/data/scenarios_s{}_h{}.csv", help="Dataset output directory")
+    parser.add_argument("--output", type=str, default="gr_pursuer/data/s{}_h{}/scenarios.csv", help="Dataset output directory")
 
     args = parser.parse_args()
 
