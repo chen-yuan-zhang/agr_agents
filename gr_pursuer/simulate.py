@@ -18,7 +18,7 @@ def get_data(env, step, actions):
     goals = env.goals
     target_goal = env.goal
     observer_action = int(actions.get(0, None))
-    target_action = int(actions.get(1, None))
+    target_action = actions.get(1, None)
 
     cost = []
     for goal in goals:
@@ -28,8 +28,8 @@ def get_data(env, step, actions):
         "step": step,
         "observer_pos": env.observer.pos, 
         "target_pos": env.target.pos, 
-        "observer_dir": env.observer.dir, 
-        "target_dir": env.target.dir,
+        "observer_dir": int(env.observer.dir), 
+        "target_dir": int(env.target.dir),
         "observer_action": observer_action,
         "target_action": target_action, 
         "target_goal": target_goal,
