@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, load_scenarios, collate_fn
 
 import os
 import hydra
@@ -9,6 +9,7 @@ import shutil
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
+from pathlib import Path
 from hydra.utils import instantiate
 from omegaconf import DictConfig, OmegaConf
 
@@ -34,6 +35,7 @@ def main(cfg : DictConfig) -> None:
     NUM_HEADS = cfg["model"]["num_heads"]
     ENABLE_HIDDEN_COST = int(cfg["env"]["enable_hidden_cost"])
     GOAL_GT = cfg["env"]["goal_gt"]
+    DATA_PATH = Path(f'../data/s{SIZE}_h{int(ENABLE_HIDDEN_COST)}')
     save_path = cfg["model"]["save_path"]
     tmp_epoch_save_path = cfg["model"]["tmp_epoch_save_path"]
 
@@ -50,22 +52,33 @@ def main(cfg : DictConfig) -> None:
     data = load_data(cfg, SIZE, OBSERVATION_WINDOW, ENABLE_HIDDEN_COST)
     classes = data["action"].unique()
 
-    nlayouts = len(data["layout"].unique())
-    data.loc[data["layout"]<=nlayouts*0.7, "PARTITION"] = "TRAIN"
-    data.loc[(data["layout"]>nlayouts*0.7) & (data["layout"]<=nlayouts*0.85), "PARTITION"] = "VALID"
-    data.loc[data["layout"]>nlayouts*0.85, "PARTITION"] = "TEST"
+    # nlayouts = len(data["layout"].unique())
+    # data.loc[data["layout"]<=nlayouts*0.7, "PARTITION"] = "TRAIN"
+    # data.loc[(data["layout"]>nlayouts*0.7) & (data["layout"]<=nlayouts*0.85), "PARTITION"] = "VALID"
+    # data.loc[data["layout"]>nlayouts*0.85, "PARTITION"] = "TEST"
     
-    train_data = data[data["PARTITION"]=="TRAIN"]
-    valid_data = data[data["PARTITION"]=="VALID"]
-    test_data = data[data["PARTITION"]=="TEST"]
+    # train_data = data[data["PARTITION"]=="TRAIN"]
+    # valid_data = data[data["PARTITION"]=="VALID"]
+    # test_data = data[data["PARTITION"]=="TEST"]
+
+    scenarios = load_scenarios(DATA_PATH, OBSERVATION_WINDOW)
+    dataset = TargetDataset(DATA_PATH, scenarios[scenarios["PARTITION"]=="TRAIN"].reset_index(), OBSERVATION_WINDOW)
+    
 
     # Datasets
     print("Loading Data Loaders")
-    train_dataset = TargetDataset(train_data, OBSERVATION_WINDOW, GOAL_GT)
-    valid_dataset = TargetDataset(valid_data, OBSERVATION_WINDOW, GOAL_GT)
+    train_dataset = TargetDataset(DATA_PATH, scenarios[scenarios["PARTITION"]=="TRAIN"].reset_index(), OBSERVATION_WINDOW)
+    valid_dataset = TargetDataset(DATA_PATH, scenarios[scenarios["PARTITION"]=="VALID"].reset_index(), OBSERVATION_WINDOW)
+    # train_dataset = TargetDataset(train_data, OBSERVATION_WINDOW, GOAL_GT)
+    # valid_dataset = TargetDataset(valid_data, OBSERVATION_WINDOW, GOAL_GT)
 
-    train_dataloader = DataLoader(train_dataset, batch_size=32, shuffle=True)
-    valid_dataloader = DataLoader(valid_dataset, batch_size=32, shuffle=False)
+    # train_dataloader = DataLoader(train_dataset, batch_size=32, shuffle=True)
+    # valid_dataloader = DataLoader(valid_dataset, batch_size=32, shuffle=False)
+
+    train_dataloader = DataLoader(train_dataset, batch_size=32, shuffle=False, 
+                            collate_fn=lambda x: collate_fn(x, DATA_PATH, SIZE, GOAL_GT))
+    valid_dataloader = DataLoader(valid_dataset, batch_size=32, shuffle=False, 
+                            collate_fn=lambda x: collate_fn(x, DATA_PATH, SIZE, GOAL_GT))
 
     # Dynamically determine input dimension
     state_dim = 6
@@ -148,47 +161,47 @@ def main(cfg : DictConfig) -> None:
         torch.save(model.state_dict(), f"{tmp_epoch_save_path}/{epoch_log['epoch']}.pth")
 
     
-    # best_epoch = max(epoch_stats, key=lambda x: x["f1_valid"])["epoch"]
-    # # Move model
-    # best_model_path = f"{save_path}/{logger.run_name}.pth"
-    # os.rename(f"{tmp_epoch_save_path}/{best_epoch}.pth", best_model_path)
-    # # Remove tmp folder
-    # shutil.rmtree(tmp_epoch_save_path)
-    # # # Load the best model
-    # model.load_state_dict(torch.load(best_model_path, weights_only=True))
-    # # torch.save(model.state_dict(), f"{save_path}/{logger.run_name}.pth")
+    best_epoch = max(epoch_stats, key=lambda x: x["f1_valid"])["epoch"]
+    # Move model
+    best_model_path = f"{save_path}/{logger.run_name}.pth"
+    os.rename(f"{tmp_epoch_save_path}/{best_epoch}.pth", best_model_path)
+    # Remove tmp folder
+    shutil.rmtree(tmp_epoch_save_path)
+    # # Load the best model
+    model.load_state_dict(torch.load(best_model_path, weights_only=True))
+    # torch.save(model.state_dict(), f"{save_path}/{logger.run_name}.pth")
 
-    # # Evaluate the model  
-    # print("Evaluating the model")
-    # dataset = TargetDataset(data, OBSERVATION_WINDOW, GOAL_GT)
-    # dataloader = DataLoader(dataset, batch_size=32, shuffle=False)
+    # Evaluate the model  
+    print("Evaluating the model")
+    dataset = TargetDataset(data, OBSERVATION_WINDOW, GOAL_GT)
+    dataloader = DataLoader(dataset, batch_size=32, shuffle=False)
 
-    # model.eval()
-    # predictions = []
-    # for batch in tqdm(dataloader):
-    #     batch = {k: v.to(device) for k, v in batch.items()}
-    #     pred = model(batch)
-    #     pred = torch.nn.functional.softmax(pred, dim=1).detach().cpu().tolist()
-    #     predictions += pred 
+    model.eval()
+    predictions = []
+    for batch in tqdm(dataloader):
+        batch = {k: v.to(device) for k, v in batch.items()}
+        pred = model(batch)
+        pred = torch.nn.functional.softmax(pred, dim=1).detach().cpu().tolist()
+        predictions += pred 
 
-    # dataset.index["probs"] = predictions
-    # data_pred = pd.merge(data.reset_index(drop=False), dataset.index, on=["index"])
-    # data_pred["pred"] = data_pred["probs"].apply(lambda x: np.argmax(x))
+    dataset.index["probs"] = predictions
+    data_pred = pd.merge(data.reset_index(drop=False), dataset.index, on=["index"])
+    data_pred["pred"] = data_pred["probs"].apply(lambda x: np.argmax(x))
 
-    # test_metrics = CumulativeMetrics(classes)
-    # for p in ["TRAIN", "VALID", "TEST"]:
-    #     data_pred_p = data_pred[data_pred["PARTITION"] == p]
-    #     y_pred = data_pred_p["pred"].values
-    #     y_true = data_pred_p["action"].astype(int).values
+    test_metrics = CumulativeMetrics(classes)
+    for p in ["TRAIN", "VALID", "TEST"]:
+        data_pred_p = data_pred[data_pred["PARTITION"] == p]
+        y_pred = data_pred_p["pred"].values
+        y_true = data_pred_p["action"].astype(int).values
 
-    #     test_metrics.update(y_true, y_pred)
-    #     metrics = {"partition": p}
-    #     metrics.update(test_metrics.compute())
-    #     # metrics.update(compute_metrics(y_true, y_pred))       
-    #     logger.log_metrics(metrics)
+        test_metrics.update(y_true, y_pred)
+        metrics = {"partition": p}
+        metrics.update(test_metrics.compute())
+        # metrics.update(compute_metrics(y_true, y_pred))       
+        logger.log_metrics(metrics)
 
-    # logger.close()
-    # print("FINISHED RUNNING")
+    logger.close()
+    print("FINISHED RUNNING")
 
 if __name__ == "__main__":
     main()

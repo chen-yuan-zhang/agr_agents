@@ -4,83 +4,126 @@ import numpy as np
 import pandas as pd
 from torch.utils.data import Dataset
 
-def load_data(cfg, size, observation_window, enable_hidden_cost):
+def load_scenarios(path, window):
+        scenarios = pd.read_csv(path / 'scenarios.csv')
+        # Filter scenarios without where the target didn't failed
+        scenarios = scenarios[~scenarios["target_failed"]]
 
-    # Load the data
-    print("Loading data")    
-    data_runs_path = cfg["data"]["data_runs_path"].format(size, enable_hidden_cost)
-    data_runs = pd.read_csv(data_runs_path)
-    data_runs = data_runs[~data_runs['action'].isna()]
-    data_scenarios_path = cfg["data"]["data_scenarios_path"].format(size, enable_hidden_cost)
-    data_scenarios = pd.read_csv(data_scenarios_path)
-    data = pd.merge(data_runs, data_scenarios[["layout", "scenario", "goals", "target_goal"]], on=["layout", "scenario"])
+        # Add the partition column
+        if "PARTITION" not in scenarios.columns:
+            # Shuffle the data
+            scenarios = scenarios.sample(frac=1).reset_index(drop=True)
+            # Partition the data
+            train_idx, valid_idx = tuple((np.array([0.7, 0.15])*len(scenarios)).cumsum().astype(int))
+            scenarios.loc[:train_idx, "PARTITION"] = "TRAIN"
+            scenarios.loc[train_idx:valid_idx, "PARTITION"] = "VALID"
+            scenarios.loc[valid_idx:, "PARTITION"] = "TEST"
+            scenarios.to_csv(path / 'scenarios.csv', index=False)
 
-    # Preprocess the data
-    print("Preprocessing data")
-    
-    data = preprocess_data(data, observation_window, size)
+        # Filter scenarios shorter that the observation window
+        scenarios = scenarios[scenarios["nsteps"] > window].reset_index(drop=True)
+        
+        
+        return scenarios
 
-    return data
-
-# Preprocess Data
-def preprocess_data(df, observation_window, size):
-    # Filter out instances with less than observation_window observations
-    df = df.groupby(['layout', 'scenario']).filter(lambda x: len(x) > observation_window).reset_index(drop=True)
-    # Format the data
-    one_hot_encode = lambda d: np.eye(4, dtype=np.int8)[d]
-    df['target_x'], df['target_y'] = zip(*df['target_pos'].apply(lambda pos: eval(pos)))
-    df['target_x'] = df['target_x'] / size
-    df['target_y'] = df['target_y'] / size
-    df['target_pos_encoded'] = df['target_pos'].apply(lambda grid: np.array(eval(grid), dtype=np.int8).flatten()/size)
-    df['direction'] = df['target_dir'].apply(one_hot_encode).tolist()
-    df['action_encoding'] = df['action'].astype(int).apply(one_hot_encode).tolist()
-    df['grid_encoding'] = df['base_grid'].apply(lambda grid: np.array(eval(grid), dtype=np.int8).flatten())
-    df['target_goal_encoding'] = df['target_goal'].apply(lambda goals: np.array(eval(goals), dtype=np.int8).flatten()/size)
-    df['goals_encoding'] = df['goals'].apply(lambda goals: np.array(eval(goals), dtype=np.int8).flatten()/size)
-    df['instance_end'] = df['step'].diff(-1).ge(0).astype(int)  # Indicate when an instance resets
-    df.loc[df.index.stop-1, 'instance_end'] = 1
-    return df
-
-# Custom Dataset
 class TargetDataset(Dataset):
-    def __init__(self, df, window, goal_gt):
-        self.df = df
+    def __init__(self, path, scenarios, window):
+        self.path = path
         self.window = window
-        self.goal_gt = goal_gt
-        self.index = df.loc[df["step"]>window, ["step"]].reset_index(drop=False)
+        self.scenarios = scenarios
+
+        # Add the cum_steps column
+        self.scenarios["cum_steps"] = (self.scenarios["nsteps"] - window).cumsum()
+    
 
     def __len__(self):
-        return len(self.index)
+        length = int(self.scenarios["nsteps"].sum() - self.scenarios.shape[0] * self.window)
+        return length
 
     def __getitem__(self, idx):
 
         # Index the data
-        step_idx = self.index.loc[idx, 'index']
-        step_row = self.df.loc[step_idx]
-
-        join_state = lambda row: [row["target_x"], row["target_y"]] + row["direction"].tolist()
-        sequence_data = self.df.loc[step_idx-self.window:step_idx]
-        state = sequence_data.apply(join_state, axis=1).tolist()
-        grid = step_row['grid_encoding']
-        goals = step_row['target_goal_encoding'] if self.goal_gt else step_row['goals_encoding']
-        action = step_row['action_encoding']
-
-        #"There should be only one instance end in the sequence"
-        assert sequence_data['instance_end'].values[0:4].sum() == 0 
-
-        if step_row['instance_end']==1:
-            next_state = np.zeros(7)
-            next_state[6] = 1
+        if idx<self.scenarios["cum_steps"].iloc[0]:
+            scenario_idx = 0
         else:
-            next_row = self.df.loc[step_idx+1]
-            next_state = np.array(join_state(next_row) + [0])
+            scenario_idx = self.scenarios[self.scenarios["cum_steps"] <= idx].index[-1] + 1
+        scenario = self.scenarios.loc[scenario_idx]
+
+        # Get the step index
+        prev_cum_steps = 0 if scenario_idx==0 else int(self.scenarios["cum_steps"].loc[scenario_idx-1])
+        steps_idx = idx - prev_cum_steps + self.window
+
+        scenario = dict(scenario)
+        scenario["path"] = self.path
+        scenario["idx"] = idx
+        scenario["step_idx"] = steps_idx
+        scenario["start_idx"] = steps_idx - self.window 
+
+
+        return scenario
+    
+# Preprocess Data
+def preprocess_data(df, size):
+    # Format the data
+    
+    return df
+    
+def collate_fn(batch, data_path, size, goal_gt):
+    simulation_tuples = [(sample['layout'], sample['scenario']) for sample in batch]
+    simulation_tuples = list(dict.fromkeys(simulation_tuples))
+    simulation_files = [f"{data_path}/layout{sample[0]}scenario{sample[1]}.csv" for sample in simulation_tuples]
+
+    simulated_data = {key: pd.read_csv(path) for key, path in zip(simulation_tuples, simulation_files)}
+    new_batch = []
+    for sample in batch:
+        layout = sample['layout']
+        scenario = sample['scenario']
+        data_dir = sample['path']
+
+        idx = sample['idx']
+        step_idx = sample['step_idx']
+        start_idx = sample['start_idx']
+
+        grid = np.array(eval(sample['base_grid']), dtype=np.int8).flatten()
+        target_goal = np.array(eval(sample['target_goal']), dtype=np.int8).flatten()/size
+        goals = np.array(eval(sample['goals']), dtype=np.int8).flatten()/size
+        goals = target_goal if goal_gt else goals
+        
+        sim_df = simulated_data[(layout, scenario)]
+        sim_df = preprocess_data(sim_df, size)
+
+        one_hot_encode = lambda d: np.eye(4, dtype=np.int8)[d]
+        sim_df['target_pos_encoded'] = sim_df['target_pos'].apply(lambda x: np.array(eval(x), dtype=np.int8).flatten()/size)
+        sim_df['target_dir_encoded'] = sim_df['target_dir'].apply(one_hot_encode).tolist()
+        sim_df['action_encoded'] = sim_df['target_action'].astype(int).apply(one_hot_encode).tolist()
+        sim_df['done'] = sim_df['done'].astype(int)  # Indicate when an instance resets
+
+        # print(idx, step_idx, sample["nsteps"], sim_df.shape[0], layout, scenario)
+        step_row = sim_df.loc[step_idx]
+        join_state = lambda row: list(row["target_pos_encoded"]) + row["target_dir_encoded"].tolist()
+        
+        # print(idx, start_idx, step_idx, sample["nsteps"])
+        sequence_data = sim_df.loc[start_idx:step_idx]
+        state = sequence_data.apply(join_state, axis=1).tolist()
+        action = step_row['action_encoded']
+
+        next_sequence_data = sim_df.loc[step_idx+1:]
+        if next_sequence_data.empty:
+            next_states = []
+        else:
+            next_states = sim_df.loc[step_idx+1:].apply(join_state, axis=1).tolist()
 
         item = {
             "state": torch.tensor(state, dtype=torch.float32),
             "grid": torch.tensor(grid, dtype=torch.float32),
             "goals": torch.tensor(goals, dtype=torch.float32),
             "action": torch.tensor(action, dtype=torch.float32),
-            "next_state": torch.tensor(next_state, dtype=torch.float32)
-        }
+            "next_states": torch.tensor(next_states, dtype=torch.float32)
+        }   
+        new_batch.append(item)      
 
-        return item
+    # Concatenate the batch
+    batch = {key: [item[key] for item in new_batch] for key in new_batch[0].keys()}
+    batch = {key: torch.stack((value)) if key!="next_states" else value for key, value in batch.items()}
+
+    return batch
