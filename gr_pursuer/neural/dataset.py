@@ -5,26 +5,13 @@ import pandas as pd
 from torch.utils.data import Dataset
 
 def load_scenarios(path, window):
-        scenarios = pd.read_csv(path / 'scenarios.csv')
-        # Filter scenarios without where the target didn't failed
-        scenarios = scenarios[~scenarios["target_failed"]]
+    scenarios = pd.read_csv(path / 'scenarios.csv')
+    # Filter scenarios without where the target didn't failed
+    scenarios = scenarios[~scenarios["target_failed"]]
 
-        # Add the partition column
-        if "PARTITION" not in scenarios.columns:
-            # Shuffle the data
-            scenarios = scenarios.sample(frac=1).reset_index(drop=True)
-            # Partition the data
-            train_idx, valid_idx = tuple((np.array([0.7, 0.15])*len(scenarios)).cumsum().astype(int))
-            scenarios.loc[:train_idx, "PARTITION"] = "TRAIN"
-            scenarios.loc[train_idx:valid_idx, "PARTITION"] = "VALID"
-            scenarios.loc[valid_idx:, "PARTITION"] = "TEST"
-            scenarios.to_csv(path / 'scenarios.csv', index=False)
-
-        # Filter scenarios shorter that the observation window
-        scenarios = scenarios[scenarios["nsteps"] > window].reset_index(drop=True)
-        
-        
-        return scenarios
+    # Filter scenarios shorter that the observation window
+    scenarios = scenarios[scenarios["nsteps"] > window].reset_index(drop=True)
+    return scenarios
 
 class TargetDataset(Dataset):
     def __init__(self, path, scenarios, window):
@@ -62,11 +49,6 @@ class TargetDataset(Dataset):
 
         return scenario
     
-# Preprocess Data
-def preprocess_data(df, size):
-    # Format the data
-    
-    return df
     
 def collate_fn(batch, data_path, size, goal_gt):
     simulation_tuples = [(sample['layout'], sample['scenario']) for sample in batch]
@@ -90,11 +72,11 @@ def collate_fn(batch, data_path, size, goal_gt):
         goals = target_goal if goal_gt else goals
         
         sim_df = simulated_data[(layout, scenario)]
-        sim_df = preprocess_data(sim_df, size)
 
         one_hot_encode = lambda d: np.eye(4, dtype=np.int8)[d]
         sim_df['target_pos_encoded'] = sim_df['target_pos'].apply(lambda x: np.array(eval(x), dtype=np.int8).flatten()/size)
         sim_df['target_dir_encoded'] = sim_df['target_dir'].apply(one_hot_encode).tolist()
+        one_hot_encode = lambda d: np.eye(3, dtype=np.int8)[d]
         sim_df['action_encoded'] = sim_df['target_action'].astype(int).apply(one_hot_encode).tolist()
         sim_df['done'] = sim_df['done'].astype(int)  # Indicate when an instance resets
 

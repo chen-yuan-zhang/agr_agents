@@ -8,7 +8,7 @@ import numpy as np
 from csv import writer
 from datetime import datetime
 from omegaconf import DictConfig, OmegaConf
-from torch.utils.tensorboard import SummaryWriter
+# from torch.utils.tensorboard import SummaryWriter
 
 
 class Logger():
@@ -136,14 +136,14 @@ class WanDBLogger(Logger):
     def log_metrics(self, data):
         super().log_metrics(data)
 
-        formatted_data = {}
-        for key, value in data.items():
-            if key == "partition":
-                continue
-            nkey = data["partition"] + "_" + key
-            formatted_data[nkey] = value
+        # formatted_data = {}
+        # for key, value in data.items():
+        #     if key == "partition":
+        #         continue
+        #     nkey = data["partition"] + "_" + key
+        #     formatted_data[nkey] = value
 
-        wandb.log(formatted_data)
+        wandb.log(data)
 
     def close(self):
 

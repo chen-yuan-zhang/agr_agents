@@ -1,5 +1,6 @@
 import random
 import argparse
+import numpy as np
 import pandas as pd
 from tqdm import tqdm
 from pathlib import Path
@@ -10,17 +11,17 @@ from .agents.target import Target
 
 
 
-def main(size, nLayouts, nScenarios, enableHiddenCost, output):
+def main(args):
 
     dataset = pd.DataFrame(columns=["layout", "scenario", "observer_pos", "target_pos", "observer_dir", "target_dir", "goals", "target_goal", "cost"])
 
-    for i in tqdm(range(nLayouts)):
-        env = GREnv(size=size, agent_view_size=[5, 3], see_through_walls=[False, True], 
+    for i in tqdm(range(args.nLayouts)):
+        env = GREnv(size=args.size, agent_view_size=[5, 3], see_through_walls=[False, True], 
                     base_grid=None, render_mode=None)
         env.reset()
         base_grid = env.base_grid
 
-        for j in tqdm(range(nScenarios), leave=False):
+        for j in tqdm(range(args.nScenarios), leave=False):
             env = GREnv(size=32, agent_view_size=[5, 3], see_through_walls=[False, True], 
                         base_grid=base_grid, render_mode=None)
             env.reset()
@@ -38,17 +39,33 @@ def main(size, nLayouts, nScenarios, enableHiddenCost, output):
                                         "hidden_cost": env.hidden_cost.tolist()}])
             dataset = pd.concat([dataset, local_data], ignore_index=True)
 
-    Path(output.format(size, int(enableHiddenCost)).rsplit("/", 1)[0]).mkdir(parents=True, exist_ok=True)
-    dataset.to_csv(output.format(size, int(enableHiddenCost)), index=False)
+    # Preshuffle the data for grid generalization
+    if args.layoutShuffle:
+        dataset = dataset.sample(frac=1).reset_index(drop=True)
+    else:
+        dataset = dataset.sort_values(by=["layout", "scenario"]).reset_index(drop=True)
+    # Partition the data
+    train_idx, valid_idx = tuple((np.array([0.7, 0.15])*len(dataset)).cumsum().astype(int))
+    dataset.loc[:train_idx, "PARTITION"] = "TRAIN"
+    dataset.loc[train_idx:valid_idx, "PARTITION"] = "VALID"
+    dataset.loc[valid_idx:, "PARTITION"] = "TEST"
+
+    dataset = dataset.sample(frac=1).reset_index(drop=True)
+
+    output = args.output.format(args.size, int(args.enableHiddenCost), args.nLayouts, int(args.layoutShuffle))
+    Path(output.rsplit("/", 1)[0]).mkdir(parents=True, exist_ok=True)
+    dataset.to_csv(output, index=False)
+    print(f"Dataset saved at {output}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Script to generate scenarios")
     parser.add_argument("--nLayouts", type=int, default=1000, help="Number of Layouts")
-    parser.add_argument("--size", type=int, default=32, help="Number of scenarios per layout")
+    parser.add_argument("--size", type=int, default=64, help="Number of scenarios per layout")
     parser.add_argument("--nScenarios", type=int, default=10, help="Number of scenarios per layout")
-    parser.add_argument("--enableHiddenCost", type=bool, default=False, help="Number of scenarios per layout")
-    parser.add_argument("--output", type=str, default="gr_pursuer/data/s{}_h{}/scenarios.csv", help="Dataset output directory")
+    parser.add_argument("--enableHiddenCost", type=bool, default=False, action=argparse.BooleanOptionalAction, help="Number of scenarios per layout")
+    parser.add_argument("--layoutShuffle", type=bool, default=True, action=argparse.BooleanOptionalAction, help="Number of scenarios per layout")
+    parser.add_argument("--output", type=str, default="gr_pursuer/data/s{}_h{}_l{}_ls{}/scenarios.csv", help="Dataset output directory")
 
     args = parser.parse_args()
 
-    main(args.size, args.nLayouts, args.nScenarios, args.enableHiddenCost, args.output)
+    main(args)
