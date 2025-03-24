@@ -27,13 +27,13 @@ def get_data(env, step, action):
    return data
 
 
-def run(base_grid=None, goals=None, hidden_cost=None):
+def run(base_grid=None, goals=None, hidden_cost=None, hidden_cost_type=None):
    env = GREnv(size=32, base_grid=base_grid, 
                see_through_walls=[False, True],
                agent_view_size=[5, 3],
                goals=goals, hidden_cost=hidden_cost, 
-               enable_hidden_cost=hidden_cost is not None, 
-               # render_mode='human'
+               hidden_cost_type=hidden_cost_type, 
+               render_mode='human'
    )
    observations, infos = env.reset()
 
@@ -65,12 +65,13 @@ def run(base_grid=None, goals=None, hidden_cost=None):
 
       env.mission = probs
       step+=1
-      # sleep(0.3)
+
+      sleep(0.1)
 
    return data
 
 
-def main(scenarios_file=None):
+def main(scenarios_file=None, hidden_cost_type=None):
 
 
    dataset = pd.DataFrame()
@@ -97,14 +98,16 @@ def main(scenarios_file=None):
       params = "_".join(name.split("_")[1:])
       file_name = f"gr_pursuer/data/dataset_{params}"
       dataset.to_csv(file_name, index=False)
+      
    else:
 
       while True:
-         run()
+         run(hidden_cost_type=hidden_cost_type)
       
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Main file for running the scenario")
     parser.add_argument("--scenarios", type=str, default=None, help="csv file to run as scenarios")
+    parser.add_argument("--hidden_cost_type", type=str, default=None, help="csv file to run as scenarios")
 
     args = parser.parse_args()
-    main(args.scenarios)
+    main(args.scenarios, args.hidden_cost_type)

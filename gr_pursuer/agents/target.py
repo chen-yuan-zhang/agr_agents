@@ -6,6 +6,7 @@ import numpy as np
 from multigrid.core.constants import DIR_TO_VEC
 from multigrid.core.actions import Action
 
+
 # MODES
 EVADE = 0
 MOVE2GOAL = 1

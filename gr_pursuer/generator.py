@@ -13,17 +13,19 @@ from .agents.target import Target
 
 def main(args):
 
-    dataset = pd.DataFrame(columns=["layout", "scenario", "observer_pos", "target_pos", "observer_dir", "target_dir", "goals", "target_goal", "cost"])
+    dataset = pd.DataFrame(columns=["layout", "scenario", "observer_pos", "target_pos", "observer_dir", "target_dir", 
+                                    "goals", "target_goal", "cost"])
 
     for i in tqdm(range(args.nLayouts)):
         env = GREnv(size=args.size, agent_view_size=[5, 3], see_through_walls=[False, True], 
-                    base_grid=None, render_mode=None)
+                    base_grid=None, hidden_cost_type=args.hidden_cost_type, render_mode=None)
         env.reset()
         base_grid = env.base_grid
+        hidden_cost = env.hidden_cost
 
         for j in tqdm(range(args.nScenarios), leave=False):
             env = GREnv(size=32, agent_view_size=[5, 3], see_through_walls=[False, True], 
-                        base_grid=base_grid, render_mode=None)
+                        base_grid=base_grid, hidden_cost=hidden_cost, render_mode=None)
             env.reset()
 
             goals = env.goals
@@ -52,7 +54,7 @@ def main(args):
 
     dataset = dataset.sample(frac=1).reset_index(drop=True)
 
-    output = args.output.format(args.size, int(args.enableHiddenCost), args.nLayouts, int(args.layoutShuffle))
+    output = args.output.format(args.size, args.hidden_cost_type, args.nLayouts, int(args.layoutShuffle))
     Path(output.rsplit("/", 1)[0]).mkdir(parents=True, exist_ok=True)
     dataset.to_csv(output, index=False)
     print(f"Dataset saved at {output}")
@@ -62,9 +64,11 @@ if __name__ == "__main__":
     parser.add_argument("--nLayouts", type=int, default=1000, help="Number of Layouts")
     parser.add_argument("--size", type=int, default=64, help="Number of scenarios per layout")
     parser.add_argument("--nScenarios", type=int, default=10, help="Number of scenarios per layout")
-    parser.add_argument("--enableHiddenCost", type=bool, default=False, action=argparse.BooleanOptionalAction, help="Number of scenarios per layout")
-    parser.add_argument("--layoutShuffle", type=bool, default=True, action=argparse.BooleanOptionalAction, help="Number of scenarios per layout")
-    parser.add_argument("--output", type=str, default="gr_pursuer/data/s{}_h{}_l{}_ls{}/scenarios.csv", help="Dataset output directory")
+    parser.add_argument("--hidden_cost_type", type=str, default=None, help="Number of scenarios per layout")
+    parser.add_argument("--layoutShuffle", type=bool, default=True, action=argparse.BooleanOptionalAction, 
+                        help="Number of scenarios per layout")
+    parser.add_argument("--output", type=str, default="gr_pursuer/data/{}_{}_{}_{}/scenarios.csv", 
+                        help="Dataset output directory")
 
     args = parser.parse_args()
 
