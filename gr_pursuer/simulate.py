@@ -69,12 +69,11 @@ def run(scenario=None, main_dir=None):
         layout = scenario["layout"]
         nscenario = scenario["scenario"]
         
-        enable_hidden_cost = hidden_cost is not None
         env = GREnv(size=32, base_grid=base_grid, 
                     see_through_walls=[False, True],
                     agent_view_size=[5, 3],
                     goals=goals, hidden_cost=hidden_cost, 
-                    enable_hidden_cost=enable_hidden_cost, 
+                    # enable_hidden_cost=enable_hidden_cost, 
                     # render_mode='human'
         )
         writer_dir = main_dir / f"layout{layout}scenario{nscenario}.csv"
@@ -128,7 +127,9 @@ def main(input_dir=None):
 
         # Get the name of the file
         for idx, scenario in scenarios.iterrows():
-            print(f"Scenario {idx}")
+            nlayout = scenarios.loc[idx, 'layout']
+            nscenario = scenarios.loc[idx, 'scenario']
+            print(f"Scenario {idx} Layout {nlayout}, Scenario {nscenario}")
             nsteps, target_failed = run(scenario=scenario, main_dir=main_dir)
             scenarios.loc[idx, "nsteps"] = nsteps
             scenarios.loc[idx, "target_failed"] = target_failed
