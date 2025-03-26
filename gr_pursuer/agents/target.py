@@ -37,7 +37,7 @@ class Target(BaseAgent):
         dir = np.array(obs["dir"])
         dir_vec = DIR_TO_VEC[dir]
             
-        cost = (grid==2).astype(int)*1000 + self.hidden_cost*100
+        cost = (grid==2).astype(int)*1000 + self.hidden_cost*10
 
         if self.path is not None and pos in self.path:
             index = self.path.index(pos)
