@@ -34,11 +34,11 @@ def main(cfg : DictConfig) -> None:
     NUM_LAYERS = cfg["model"]["num_layers"]
     NUM_HEADS = cfg["model"]["num_heads"]
 
-    ENABLE_HIDDEN_COST = int(cfg["env"]["enable_hidden_cost"])
+    HIDDEN_COST_TYPE = cfg["env"]["hidden_cost_type"]
     GOAL_GT = cfg["env"]["goal_gt"]
     DATA_LENGTH = cfg["data"]["length"]
     LAYOUT_SHUFFLE = cfg["data"]["layout_shuffle"]
-    DATA_PATH = Path(cfg["data"]["path"].format(SIZE, int(ENABLE_HIDDEN_COST), DATA_LENGTH, int(LAYOUT_SHUFFLE)))
+    DATA_PATH = Path(cfg["data"]["path"].format(SIZE, HIDDEN_COST_TYPE, DATA_LENGTH, int(LAYOUT_SHUFFLE)))
     save_path = cfg["model"]["save_path"]
     tmp_epoch_save_path = cfg["model"]["tmp_epoch_save_path"]
 
@@ -95,7 +95,7 @@ def main(cfg : DictConfig) -> None:
         os.makedirs(tmp_epoch_save_path)
 
     # Training Loop
-    print("Starting training")
+    print(f"Starting training with {DATA_PATH}")
     epoch_stats = []
     
     for epoch in range(NEPOCHS):

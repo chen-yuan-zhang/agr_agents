@@ -35,9 +35,11 @@ def main(args):
             for goal in goals:
                 cost.append(len(astar2d(env.observer.pos, goal, base_grid)) - 1)
 
-            local_data = pd.DataFrame([{"layout": i, "scenario": j, "observer_pos": env.observer.pos, "target_pos": env.target.pos, 
+            local_data = pd.DataFrame([{"layout": i, "scenario": j, "observer_pos": env.observer.pos, 
+                                        "target_pos": env.target.pos, 
                                         "observer_dir": env.observer.dir, "target_dir": env.target.dir,
-                                        "goals": goals, "target_goal": target_goal, "cost": cost, "base_grid": base_grid.tolist(),
+                                        "goals": goals, "target_goal": target_goal, "cost": cost, 
+                                        "base_grid": base_grid.tolist(),
                                         "hidden_cost": env.hidden_cost.tolist()}])
             dataset = pd.concat([dataset, local_data], ignore_index=True)
 
