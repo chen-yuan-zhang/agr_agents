@@ -1,2 +1,9 @@
 __pycache__
 *egg-info*
+*.csv
+gr_pursuer/neural/models/*
+*logs*
+*wandb*
+multirun/
+outputs/
+gr_pursuer/neural/tmp_models/*

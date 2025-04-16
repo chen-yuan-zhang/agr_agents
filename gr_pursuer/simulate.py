@@ -68,11 +68,15 @@ def run(scenario=None, main_dir=None):
         hidden_cost = np.array(eval(scenario["hidden_cost"]))
         layout = scenario["layout"]
         nscenario = scenario["scenario"]
+        agents_start_pos=scenario[["observer_pos", "target_pos"]].apply(eval).tolist()
+        agents_start_dir = scenario[['observer_dir', 'target_dir']].tolist()
         
         env = GREnv(size=32, base_grid=base_grid, 
                     see_through_walls=[False, True],
                     agent_view_size=[5, 3],
                     goals=goals, hidden_cost=hidden_cost, 
+                    agents_start_pos=agents_start_pos,
+                    agents_start_dir=agents_start_dir,
                     # enable_hidden_cost=enable_hidden_cost, 
                     # render_mode='human'
         )

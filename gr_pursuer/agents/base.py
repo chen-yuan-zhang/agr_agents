@@ -1,5 +1,3 @@
-
-
 class BaseAgent():
 
     def __init__(self, agent):
@@ -7,3 +5,4 @@ class BaseAgent():
 
     def compute_action(self, obs):
         raise NotImplementedError
+    
