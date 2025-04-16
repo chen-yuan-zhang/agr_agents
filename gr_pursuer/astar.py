@@ -67,7 +67,7 @@ def astar3d(start, target, cost, voxel_grid, heuristic=heuristic_manhattan, fly_
         start = Voxel(*start)
         target = Voxel(*target)
 
-    next = create_root_label(start, target, heuristic, fly_altitude=fly_altitude)
+    next = create_root_label(start, target, heuristic, dir=(0, 0), fly_altitude=fly_altitude)
 
     pq = []
     heapq.heappush(pq, (next.f, next))
@@ -125,7 +125,7 @@ def astar3d(start, target, cost, voxel_grid, heuristic=heuristic_manhattan, fly_
 def astar2d(pos_state, target, env, cost = None, heuristic=heuristic_manhattan, max_iter=None):
 
 
-    # X,Y = cost.shape[0], cost.shape[1]
+    # X,Y = env.width, env.height
     # start_pos, dir = pos_state
     # if dir not in range(4):
     #     raise ValueError("Direction must be within the range [0, 3]")
@@ -185,7 +185,7 @@ def astar2d(pos_state, target, env, cost = None, heuristic=heuristic_manhattan, 
     return None
 
 
-def execute_action(pos_state, action, cost):
+def execute_action(pos_state, action, env):
     """
     Execute an action in the environment.
     
@@ -212,7 +212,7 @@ def execute_action(pos_state, action, cost):
         dx, dy = DIR_TO_VEC[dir]
         new_pos = (pos[0] + dx, pos[1] + dy)
 
-        if 0 <= new_pos[0] < cost.shape[0] and 0 <= new_pos[1] < cost.shape[1]:
+        if 0 <= new_pos[0] < env.width and 0 <= new_pos[1] < env.height and env.base_grid[new_pos[0], new_pos[1]] == 0:
             return True, (new_pos, dir)
         
         return False, (pos, dir) # If the agent hits a wall, return the current state
@@ -221,7 +221,7 @@ def execute_action(pos_state, action, cost):
         return True, (pos, dir)
     
 
-def execute_reverse_action(pos_state, action, cost):
+def execute_reverse_action(pos_state, action, env):
     """
     Execute an action in the environment.
     
@@ -248,7 +248,7 @@ def execute_reverse_action(pos_state, action, cost):
         dx, dy = DIR_TO_VEC[dir]
         new_pos = (pos[0] - dx, pos[1] - dy)
 
-        if 0 <= new_pos[0] < cost.shape[0] and 0 <= new_pos[1] < cost.shape[1]:
+        if 0 <= new_pos[0] < env.width and 0 <= new_pos[1] < env.height and env.base_grid[new_pos[0], new_pos[1]] == 0:
             return True, (new_pos, dir)
         
         return False, (pos, dir) # If the agent hits a wall, return the current state
@@ -256,7 +256,7 @@ def execute_reverse_action(pos_state, action, cost):
     if action == Action.stay:
         return True, (pos, dir)
 
-def execute_obs_action(pos_state, action, cost):
+def execute_obs_action(pos_state, action, env):
     """
     Execute an action in the environment.
     
@@ -283,7 +283,7 @@ def execute_obs_action(pos_state, action, cost):
         dx, dy = DIR_TO_VEC[dir]
         new_pos = (pos[0] + dx, pos[1] + dy)
 
-        if 0 <= new_pos[0] < cost.shape[0] and 0 <= new_pos[1] < cost.shape[1]:
+        if 0 <= new_pos[0] < env.width and 0 <= new_pos[1] < env.height:
             return True, (new_pos, dir)
         
         return False, (pos, dir) # If the agent hits a wall, return the current state
@@ -307,7 +307,7 @@ def get_successor(env, pos_state):
     successors = []
 
     # Define the possible actions
-    actions = [Action.left, Action.right, Action.forward]
+    actions = [Action.left, Action.right, Action.forward, Action.stay]
 
     for action in actions:
         status, successor = execute_action((pos, dir), action, env)
@@ -316,7 +316,7 @@ def get_successor(env, pos_state):
 
     return successors
 
-def get_reverse_successor(cost, pos_state):
+def get_reverse_successor(env, pos_state):
     """
     Generate the next position and direction given the current position and direction.
     
@@ -332,16 +332,16 @@ def get_reverse_successor(cost, pos_state):
     successors = []
 
     # Define the possible actions
-    actions = [Action.left, Action.right, Action.forward]
+    actions = [Action.left, Action.right, Action.forward, Action.stay]
 
     for action in actions:
-        status, successor = execute_reverse_action((pos, dir), action, cost)
+        status, successor = execute_reverse_action((pos, dir), action, env)
         if status:
             successors.append((action, successor))
 
     return successors
 
-def get_obs_successor(cost, pos_state):
+def get_obs_successor(env, pos_state):
     """
     Generate the next position and direction given the current position and direction.
     
@@ -357,10 +357,10 @@ def get_obs_successor(cost, pos_state):
     successors = []
 
     # Define the possible actions
-    actions = [Action.left, Action.right, Action.forward]
+    actions = [Action.left, Action.right, Action.forward, Action.stay]
 
     for action in actions:
-        status, successor = execute_obs_action((pos, dir), action, cost)
+        status, successor = execute_obs_action((pos, dir), action, env)
         if status:
             successors.append((action, successor))
 

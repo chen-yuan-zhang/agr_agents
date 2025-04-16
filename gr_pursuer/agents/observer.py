@@ -1,15 +1,17 @@
 from .base import BaseAgent
-from ..astar import astar2d
+from ..astar import astar2d, get_successor, execute_action, get_obs_successor, get_reverse_successor
 import matplotlib.pyplot as plt
 
 import math
 import numpy as np
-from multigrid.core.constants import DIR_TO_VEC
+from multigrid.core.constants import DIR_TO_VEC, Direction
 from multigrid.core.actions import Action
 from multigrid.utils.obs import gen_obs_grid_encoding
 from multigrid.core.constants import Type
 import random
 import os
+from collections import deque
+from copy import deepcopy
 
 # MODES
 TRACK = 0
@@ -90,11 +92,11 @@ class Observer(BaseAgent):
 
             self.target_observations.append((self.step, target_pos, target_dir, target_paths, target_costs))
 
-            # if len(self.target_observations) > 3 and max((self.prob_dict).values())>0.8:
-            #     max_idx = np.argmax((self.prob_dict).values())
-            #     self.agent.reported_goal = self.goals[max_idx]
+            if len(self.target_observations) > 3 and max((self.prob_dict).values())>0.8:
+                max_idx = np.argmax((self.prob_dict).values())
+                self.agent.reported_goal = self.goals[max_idx]
                 
-            #     return Action.done
+                return Action.done
 
 
         path = None
@@ -148,6 +150,7 @@ class Observer(BaseAgent):
 
 class BeliefUpdateObserver(BaseAgent):
     def __init__(self, env, init_actor_belief = None, init_goal_belief = None):
+        
         super().__init__(env.observer)
 
         self.env = env
@@ -156,57 +159,119 @@ class BeliefUpdateObserver(BaseAgent):
 
         self.goals = env.goals
         self.step = -1
+        self.pos = env.observer.pos
+        self.dir = env.observer.dir
 
-        if init_actor_belief:
-            self.actor_belief = init_actor_belief
-        else:
-            self.actor_belief = set_uniform_prob(env.base_grid)
-            print(self.actor_belief)
-            
         if init_goal_belief:
             self.goal_belief = init_goal_belief
         else:
             self.goal_belief = { g:1/len(self.goals) for g in self.goals}
 
+        if init_actor_belief:
+            self.actor_belief = init_actor_belief
+        else:
+            self.actor_belief = {g: set_uniform_prob(env.base_grid, self.goal_belief[g]) for g in self.goals}
+
+        self.dist_matrix = self.compute_pairwise_distances()
+
+
+    def compute_pairwise_distances(self):
+        """
+        Compute all pairwise distances from each state (position and direction) to the goal locations using BFS.
+        """
+        free_cells = np.argwhere(self.env.base_grid == 0)
+        num_cells = len(free_cells)
+        num_directions = 4  # Number of possible directions (east, south, west, north)
+        num_states = num_cells * num_directions
+
+        cell_to_index = {tuple(cell): idx for idx, cell in enumerate(free_cells)}
+
+        # Initialize distance matrix for distances to goal locations
+        dist_matrix = {goal: np.full(num_states, np.inf) for goal in self.goals}
+
+        for goal in self.goals:
+            print(goal)
+            goal_idx = cell_to_index[tuple(goal)]
+            queue = deque([(goal_idx, dir, 0) for dir in range(num_directions)])  # (cell_index, direction, distance)
+            visited = set()
+
+            while queue:
+                current_idx, current_dir, current_dist = queue.popleft()
+                state = (current_idx, current_dir)
+                if state in visited:
+                    continue
+                visited.add(state)
+
+                dist_matrix[goal][current_idx * num_directions + current_dir] = current_dist
+
+                pos_state = (free_cells[current_idx], current_dir)
+                for action, next_pos_state in get_reverse_successor(self.env, pos_state):
+                    next_pos, next_dir = next_pos_state
+                    if tuple(next_pos) in cell_to_index:
+                        next_idx = cell_to_index[tuple(next_pos)]
+                        queue.append((next_idx, next_dir, current_dist + 1))
+
+        adjusted_dist_matrix = dict()
+
+        for i in range(num_states):
+            for goal in self.goals:
+                cell = free_cells[i // num_directions]
+                pos_state = (tuple(cell), i % num_directions)
+                adjusted_dist_matrix[(pos_state, tuple(goal))] = dist_matrix[goal][i]
+
+        return adjusted_dist_matrix
+    
+
         
     def compute_action(self, obs):
-        self.update_belief(obs) # update the belief based on observation, not consider transition dynamics yet
-
         self.step += 1
+        self.pos = obs["pos"]
+        self.dir = obs["dir"]
+        self.update_belief(obs) # update the belief based on current observation, each entry is the joint prob P(state, goal, obs history)
 
-        # assume goal directed behavior
-
-        new_actor_belief = np.zeros_like(self.actor_belief)
-        for goal in self.goals:
-            goal_belief = self.goal_belief[goal]
-            for cell in np.argwhere(self.actor_belief > 0):
-                pos, dir = cell[:2], cell[2]
-                prob = self.actor_belief[tuple(cell)]
-                successors = get_successor(self.env, pos, dir)
-
-                tran_probs = {}
-                for succ in successors:
-                    pos, dir = succ
-                    path = astar2d(succ, goal, self.env)
-                    if path:
-                        tran_probs[(pos[0], pos[1], dir)] = math.exp( - BETA * (1 + len(path)))
-                    else:
-                        tran_probs[(pos[0], pos[1], dir)] = 0
-                
-                total_prob = sum(tran_probs.values())
-                if total_prob > 0:
-                    for succ in tran_probs:
-                        tran_probs[succ] /= total_prob
+        self.update_goal_belief() # update the goal belief based on the belief of the observer, each entry is the conditional prob P(goal|obs history)
+        
 
 
-                for succ in successors:
-                    new_actor_belief[(succ[0][0],succ[0][1],succ[1])] += goal_belief*prob*tran_probs[(succ[0][0],succ[0][1],succ[1])]
 
-        self.actor_belief = new_actor_belief
-        self.render_and_save(f'belief_update_2/actor_belief_step_{self.step}.png', obs)
+        # assume goal directed behavior, predict next step belief based on current belief
+        self.actor_belief = update_actor_belief(self.actor_belief, self.goals, self.env, self.dist_matrix) # update the actor belief based on the goal belief, each entry is the joint prob P(state, goal, obs history)
+
+
+        self.render_and_save(f'belief_update_test/actor_belief_step_{self.step}.png', obs)
 
         # select action
-        return random.choice([Action.right, Action.left, Action.forward])
+        # return random.choice([Action.right, Action.left, Action.forward])
+
+        return self.mcts()
+
+    def mcts(self, iterations = 100, exploration_weight = 1):
+        start_pos_state = (self.pos, self.dir)
+        start_actor_belief = deepcopy(self.actor_belief)
+        start_goal_belief = deepcopy(self.goal_belief)
+        root = MCTSNode(self.agent, start_pos_state, start_actor_belief, start_goal_belief, self.env, self.dist_matrix)
+        
+        for _ in range(iterations):
+            node = root
+            while not node.is_terminal() and node.is_fully_expanded():
+                node = node.best_child(exploration_weight)
+            
+            if not node.is_terminal():
+                node = node.expand()
+
+
+            
+            result = node.rollout()
+            node.backpropagate(result)
+        
+
+        # for child in root.children:
+        #     print(child.action, child.visits, child.value)
+        #     print(child.value/child.visits)
+
+        return root.best_child(0).action
+
+        
 
     def render_and_save(self, filename, obs):
         """
@@ -218,11 +283,23 @@ class BeliefUpdateObserver(BaseAgent):
         """
         os.makedirs(os.path.dirname(filename), exist_ok=True)
 
-        belief_sum = np.sum(self.actor_belief, axis=2)
+        total_belief = np.zeros_like(next(iter(self.actor_belief.values())))
+        for goal, belief in self.actor_belief.items():
+            total_belief += belief
+
         
-        plt.imshow(belief_sum, cmap='coolwarm', interpolation='nearest', vmin=0, vmax=0.1)
+
+        belief_sum = np.sum(total_belief, axis=2)
+        log_belief_sum = np.log(belief_sum + 1e-10)
+        vmin = np.min(log_belief_sum)
+        vmax = np.max(log_belief_sum)
+        
+        plt.imshow(log_belief_sum, cmap='coolwarm', interpolation='nearest', vmin=vmin, vmax=vmax)
         plt.colorbar()
-        plt.title('Actor Belief Heatmap')
+        goal_colors = ['yellow', 'green', 'cyan', 'magenta', 'orange']
+        goal_probs = [self.goal_belief[goal] for goal in self.goals]
+        goal_text = '\n'.join([f'Goal {i+1} ({goal_colors[i % len(goal_colors)]}): {prob:.2f}' for i, prob in enumerate(goal_probs)])
+        plt.title(goal_text)
 
         # Overlay obstacles
         obstacles = np.where(self.env.base_grid != 0)
@@ -233,13 +310,17 @@ class BeliefUpdateObserver(BaseAgent):
         plt.scatter(observer_pos[1], observer_pos[0], c='blue', marker='o', label='Observer')
 
         # Overlay goal positions
-        for goal in self.goals:
-            plt.scatter(goal[1], goal[0], c='green', marker='*', label='Goal')
+        
+        for i, goal in enumerate(self.goals):
+            plt.scatter(goal[1], goal[0], c=goal_colors[i % len(goal_colors)], marker='*', label='Goal')
 
         # Overlay target position if observed
         if "target_pos" in obs:
             target_pos = obs["target_pos"]
             plt.scatter(target_pos[1], target_pos[0], c='red', marker='x', label='Target')
+
+        
+
 
         plt.savefig(filename)
         plt.close()
@@ -253,14 +334,25 @@ class BeliefUpdateObserver(BaseAgent):
         pos (tuple): The position of the actor or None.
         """
         # Update the belief of the observer based on the observed FoV
-        if "target_pos" in obs:
-            target_pos = obs["target_pos"]
-            target_dir = obs["target_dir"] # 0-4 denote east south west north respectively
-            self.actor_belief = np.zeros_like(self.actor_belief)
-            self.actor_belief[tuple(target_pos)][target_dir] = 1.0
+        if "target_pos" in obs or self.pos == self.env.target.pos:
+            print(self.step)
+            print("in view")
+            target_pos = self.env.target.pos
+            target_dir = self.env.target.dir # 0-3 denote east south west north respectively
+            
+            
+            for goal in self.goals:
+                
+                new_actor_belief = np.zeros_like(self.actor_belief[goal])
+                new_actor_belief[tuple(target_pos)][target_dir] = self.actor_belief[goal][tuple(target_pos)][target_dir]
+                self.actor_belief[goal] = new_actor_belief
+                
+                
 
         else:
-
+            print(self.step)
+            print("not in view")
+   
             obs_shape = self.agent.observation_space['image'].shape[:-1]
             vis_mask = np.zeros_like(obs_shape, dtype=bool)
             vis_mask = (self.env.gen_obs()[0]['image'][..., 0] !=  Type.unseen.to_index()) # 0 denotes the observer
@@ -295,17 +387,95 @@ class BeliefUpdateObserver(BaseAgent):
 
                     # Mark this cell to be highlighted
                     highlight_mask[abs_i, abs_j] = True
+            # highlight_mask = obs['fov']
             
+            for goal in self.goals:
+                
+                
+                for cell in np.argwhere(highlight_mask == 1):
+                    self.actor_belief[goal][tuple(cell)] = 0
+                
+               
+               
+
+
+
+    def update_goal_belief(self):
+        """
+        Update the belief of the observer based on the observed FoV.
+        
+        Parameters:
+        FoV (np.array): The field of view of the observer.
+        pos (tuple): The position of the actor or None.
+        """
+        # Update the belief of the observer based on the observed FoV
+        for goal in self.goals:
+            self.goal_belief[goal] = np.sum(self.actor_belief[goal])
+
+        total = sum(self.goal_belief.values())
+        if total == 0:
+            print("should not happen")
+            print(self.goal_belief)
+            for goal in self.goals:
+                print(np.where(self.actor_belief[goal]>0))
+            input()
+        for goal in self.goals:
+            self.goal_belief[goal] /= total
+
+
+
+def update_actor_belief(actor_belief, goals, env, dist_matrix, beta = BETA):
+    new_actor_belief = {goal: np.zeros_like(actor_belief[goal]) for goal in goals}
+
+    for goal in goals:
+        current_actor_belief = actor_belief[goal]
+        for cell in np.argwhere(current_actor_belief > 0):
+            pos, dir = cell[:2], cell[2]
+            pos_state = (pos, dir)
+            prob = current_actor_belief[tuple(cell)]
+            successors = get_successor(env, pos_state)
+
+            tran_probs = {}
+
+            if pos[0] == goal[0] and pos[1] == goal[1]:
+                successors = list(filter(lambda x: x[0] == Action.stay, successors))
+
+            for action, succ in successors:
+                # path = astar2d(succ, goal, self.env)
+
+                next_pos, next_dir = succ
+
+                succ = ((next_pos[0], next_pos[1]), next_dir)
+
+                # if path:
+                #     tran_probs[succ] = math.exp( - BETA * (1 + len(path)))
+                # else:
+                #     tran_probs[succ] = 0
+
+                if (succ, goal) in dist_matrix:
+                    tran_probs[succ] = math.exp(- beta * (1 + dist_matrix[(succ, goal)]))
+
+                else:
+                    print("should not happen")
+                    input()
+                    tran_probs[succ] = 0
+
     
-            add_probs = 0
-            for cell in np.argwhere(highlight_mask == True):
-                add_probs += sum(self.actor_belief[tuple(cell)])
-                self.actor_belief[tuple(cell)] = 0
+            total_prob = sum(tran_probs.values())
+            if total_prob > 0:
+                for succ in tran_probs:
+                    tran_probs[succ] /= total_prob
 
-            for cell in np.argwhere((highlight_mask == False) & (self.env.base_grid == 0)):
-                self.actor_belief[tuple(cell)] *= 1/(1-add_probs)
 
-def set_uniform_prob(grid, dir=4):
+
+            for action, succ in successors:
+                new_actor_belief[goal][succ[0][0],succ[0][1],succ[1]] += prob*tran_probs[((succ[0][0],succ[0][1]),succ[1])]
+
+ 
+    return new_actor_belief
+
+
+def set_uniform_prob(grid, total_prob = 1):
     """
     Set a uniform probability for all free cells in the grid.
     
@@ -315,9 +485,10 @@ def set_uniform_prob(grid, dir=4):
     Returns:
     np.array: A grid with uniform probabilities for all free cells.
     """
+    dir = 4
     free_cells = np.argwhere(grid == 0)
     num_free_cells = len(free_cells)
-    uniform_prob = 1.0 / (num_free_cells * dir) if num_free_cells > 0 else 0
+    uniform_prob = total_prob / (num_free_cells * dir) if num_free_cells > 0 else 0
 
     prob_grid = np.zeros((*grid.shape, dir), dtype=float)
     for cell in free_cells:
@@ -326,47 +497,253 @@ def set_uniform_prob(grid, dir=4):
     return prob_grid
 
 
-def get_successor(env, pos, dir):
-    """
-    Generate the next position and direction given the current position and direction.
+# def get_successor(env, pos, dir):
+#     """
+#     Generate the next position and direction given the current position and direction.
     
-    Parameters:
-    env (object): The environment object containing the grid and other relevant information.
-    pos (tuple): The current position (x, y).
-    dir (int): The current direction (0: east, 1: south, 2: west, 3: north).
+#     Parameters:
+#     env (object): The environment object containing the grid and other relevant information.
+#     pos (tuple): The current position (x, y).
+#     dir (int): The current direction (0: east, 1: south, 2: west, 3: north).
     
-    Returns:
-    list: A list of tuples representing the next position and direction.
-    """
-    successors = []
-    x, y = pos
+#     Returns:
+#     list: A list of tuples representing the next position and direction.
+#     """
+#     successors = []
+#     x, y = pos
 
-    # Define the direction vectors for east, south, west, and north
-    DIR_TO_VEC_tmp = {
-        0: (1, 0),  # east
-        1: (0, 1),  # south
-        2: (-1, 0), # west
-        3: (0, -1)  # north
-    }
+#     # Define the direction vectors for east, south, west, and north
+#     DIR_TO_VEC_tmp = {
+#         0: (1, 0),  # east
+#         1: (0, 1),  # south
+#         2: (-1, 0), # west
+#         3: (0, -1)  # north
+#     }
 
-    # Define the possible actions: forward, turn right, turn left
-    actions = [
-        (0, 0),  # forward
-        (1, 1),  # turn right
-        (2, -1)  # turn left
-    ]
+#     # Define the possible actions: forward, turn right, turn left
+#     actions = [
+#         (0, 0),  # forward
+#         (1, 1),  # turn right
+#         (2, -1)  # turn left
+#     ]
 
-    for action, turn in actions:
-        if action == 0:  # forward
-            dx, dy = DIR_TO_VEC_tmp[dir]
-            new_pos = (x + dx, y + dy)
-            new_dir = dir
-        else:  # turn right or left
-            new_pos = pos
-            new_dir = (dir + turn) % 4
+#     for action, turn in actions:
+#         if action == 0:  # forward
+#             dx, dy = DIR_TO_VEC_tmp[dir]
+#             new_pos = (x + dx, y + dy)
+#             new_dir = dir
+#         else:  # turn right or left
+#             new_pos = pos
+#             new_dir = (dir + turn) % 4
 
-        # Check if the new position is within the grid bounds and not an obstacle
-        if 0 <= new_pos[0] < env.width and 0 <= new_pos[1] < env.height and env.base_grid[new_pos[0], new_pos[1]] == 0:
-            successors.append((new_pos, new_dir))
+#         # Check if the new position is within the grid bounds and not an obstacle
+#         if 0 <= new_pos[0] < env.width and 0 <= new_pos[1] < env.height and env.base_grid[new_pos[0], new_pos[1]] == 0:
+#             successors.append((new_pos, new_dir))
 
-    return successors
+#     return successors
+
+
+class MCTSNode:
+    def __init__(self, agent, pos_state, actor_belief, goal_belief, env, dist_matrix, action = None, parent=None):
+        self.agent = agent
+        self.dist_matrix = dist_matrix
+        self.pos_state = pos_state  # The current game state
+        self.parent = parent  # Parent node
+        self.action = action  # Action that led to this node
+        self.actor_belief = {goal: actor_belief[goal] for goal in actor_belief}
+        self.goal_belief = {goal: goal_belief[goal] for goal in goal_belief}
+        self.env = env
+        self.children = []  # List of child nodes
+        self.visits = 0  # Number of times node has been visited
+        self.value = 0  # Total value of the node
+
+    def is_fully_expanded(self):
+        return len(self.children) == len(get_obs_successor(self.env, self.pos_state))
+
+    def best_child(self, exploration_weight=1.0):
+        """Selects the best child using UCT for decision nodes and expectation for chance nodes."""
+
+        return max(
+            self.children, 
+            key=lambda child: (child.value / (child.visits + 1e-6)) + 
+                              exploration_weight * math.sqrt(math.log(self.visits) / (child.visits + 1e-6))
+        )
+
+    def expand(self):
+        """Expands the node by adding a new child node."""
+        tried_moves = {child.action for child in self.children}
+        possible_succs = get_obs_successor(self.env, self.pos_state)
+
+        for action, next_pos_state in possible_succs:
+            if action not in tried_moves:
+                g = self.sample_goal()
+ 
+                actor_pos_state = self.sample_from_3d_belief(self.actor_belief[g])
+
+
+                new_actor_belief = self.update_actor_belief_from_obs(actor_pos_state, next_pos_state)
+
+                
+
+                new_goal_belief = self.update_goal_belief(new_actor_belief)
+
+      
+                # goal directed update of the actor belief
+                new_actor_belief = update_actor_belief(new_actor_belief, self.env.goals, self.env, self.dist_matrix)
+
+
+                new_node = MCTSNode(self.agent, next_pos_state, new_actor_belief, new_goal_belief, self.env, self.dist_matrix, action = action, parent=self)
+                self.children.append(new_node)
+                return new_node
+            
+    def update_goal_belief(self, actor_belief):
+        new_goal_belief = {}
+        for goal in self.goal_belief:
+            new_goal_belief[goal] = np.sum(actor_belief[goal])
+
+        total = sum(new_goal_belief.values())
+        for goal in self.goal_belief:
+            new_goal_belief[goal] /= total
+
+        return new_goal_belief
+            
+    def update_actor_belief_from_obs(self, actor_pos_state, observer_pos_state):
+        
+        new_actor_belief = {goal: np.zeros_like(self.actor_belief[goal]) for goal in self.actor_belief}
+
+        actor_pos = actor_pos_state[0], actor_pos_state[1]
+        actor_dir = actor_pos_state[2]
+
+        observer_pos = observer_pos_state[0]
+        observer_dir = Direction(observer_pos_state[1])
+
+        obs_shape = self.agent.observation_space['image'].shape[:-1]
+        vis_mask = np.zeros_like(obs_shape, dtype=bool)
+        vis_mask = (self.env.gen_obs()[0]['image'][..., 0] !=  Type.unseen.to_index()) # 0 denotes the observer
+
+
+        highlight_mask = np.zeros((self.env.width, self.env.height), dtype=bool)
+
+
+        # of the agent's view area
+        f_vec = observer_dir.to_vec()
+        r_vec = np.array((-f_vec[1], f_vec[0]))
+        top_left = (
+            observer_pos
+            + f_vec * (self.agent.view_size - 1)
+            - r_vec * (self.agent.view_size // 2)
+        )
+
+        # For each cell in the visibility mask
+        for vis_j in range(0, self.agent.view_size):
+            for vis_i in range(0, self.agent.view_size):
+                # If this cell is not visible, don't highlight it
+                if not vis_mask[vis_i, vis_j]:
+                    continue
+
+                # Compute the world coordinates of this cell
+                abs_i, abs_j = top_left - (f_vec * vis_j) + (r_vec * vis_i)
+
+                if abs_i < 0 or abs_i >= self.env.width:
+                    continue
+                if abs_j < 0 or abs_j >= self.env.height:
+                    continue
+
+                # Mark this cell to be highlighted
+                highlight_mask[abs_i, abs_j] = True
+
+
+        if highlight_mask[actor_pos]: # if the actor is in the observer's view
+            for g in self.goal_belief:
+                new_actor_belief[g][actor_pos][actor_dir] = self.actor_belief[g][actor_pos][actor_dir] 
+        else:
+            for g in self.goal_belief:
+                for cell in np.argwhere(highlight_mask == True):
+   
+                    new_actor_belief[g][tuple(cell)] = 0
+
+                for cell in np.argwhere(highlight_mask == False):
+                    new_actor_belief[g][tuple(cell)] = self.actor_belief[g][tuple(cell)]
+                
+
+        return new_actor_belief
+
+        
+    def is_terminal(self):
+        return self.env.is_done()
+
+    def rollout(self):
+        """Simulates the game to the end from the current state and returns the result."""
+        return -compute_entropy(self.goal_belief)
+
+        # total_belief = np.zeros_like(next(iter(self.actor_belief.values())))
+        # for goal, belief in self.actor_belief.items():
+        #     total_belief += belief
+
+        
+
+        # belief_sum = np.sum(total_belief, axis=2)
+        # return -compute_entropy(belief_sum)
+
+    def backpropagate(self, result, action_penalty=0):
+        """Updates the tree nodes based on the result of the rollout."""
+        self.visits += 1
+        self.value += result - action_penalty
+        if self.parent:
+            self.parent.backpropagate(result)
+
+
+
+
+
+    def sample_goal(self):
+        """Samples a goal based on the probability distribution in self.goal_belief."""
+        goals = list(self.goal_belief.keys())  # Extract possible goals
+        probabilities = np.array(list(self.goal_belief.values()))  # Extract probabilities
+
+        if probabilities.sum() == 0:
+            print("should not happen")
+            print(self.goal_belief)
+            input()
+        # Normalize probabilities to ensure they sum to 1
+        probabilities /= probabilities.sum()
+
+        # Sample a goal based on the normalized probability distribution
+        sampled_goal = np.random.choice(len(goals), p=probabilities)
+        return goals[sampled_goal]
+    
+
+    def sample_from_3d_belief(self, actor_belief):
+        """Samples a location from the 3D belief map using probability distribution."""
+        depth, height, width = actor_belief.shape  # Get dimensions
+        # Flatten the 3D belief map into a 1D array
+        flattened_belief = np.copy(actor_belief).ravel()
+
+        if flattened_belief.sum() == 0:
+            print("should not happen")
+            print(actor_belief)
+            input()
+        # Normalize probabilities to ensure they sum to 1
+        flattened_belief /= flattened_belief.sum()
+
+        # Sample an index based on the belief distribution
+        sampled_index = np.random.choice(len(flattened_belief), p=flattened_belief)
+
+        # Convert the 1D index back to 3D coordinates
+        sampled_depth, rem = divmod(sampled_index, height * width)
+        sampled_row, sampled_col = divmod(rem, width)
+
+        return sampled_depth, sampled_row, sampled_col  # Return sampled (z, y, x) coordinates
+
+def compute_entropy(goal_belief):
+    """Computes the Shannon entropy of the goal belief distribution."""
+    probabilities = np.array(list(goal_belief.values()))
+    # probabilities = goal_belief
+    
+    # Ensure the probabilities sum to 1
+    probabilities /= probabilities.sum()
+    
+    # Compute entropy, avoiding log(0) by filtering out zero probabilities
+    entropy = -np.sum(probabilities * np.log2(probabilities + 1e-10))  # Small offset to avoid log(0)
+    
+    return entropy
