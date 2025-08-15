@@ -1,48 +1,70 @@
 import random
 import argparse
 import pandas as pd
-from .astar import astar2d
-from multigrid.envs.goal_prediction import GREnv
 
-from .agents.target import Target
+from multigrid.envs.goal_prediction import AGREnv
+from .agents.target import AstarTarget
+import numpy as np
 
 
+sizes = [10,20,30]
+initial_distances = [3, 5, 7]
+num_layouts = 10
+num_scenarios = 5
 
-def main(nLayouts, nScenarios, enableHiddenCost, output, initial_distance):
+for size in sizes:
+    for layout_id in range(num_layouts):
+        # generate the base grid (e.g. layouts)
+        env = AGREnv(size=size)
+        obs, info = env.reset()
+        base_grid = info['base_grid']
 
-    size = 32
-    dataset = pd.DataFrame(columns=["layout", "scenario", "observer_pos", "target_pos", "observer_dir", "target_dir", "goals", "target_goal", "base_grid", "hidden_cost", "initial_distance"])
+    
+        # wall positions
+        rows, cols = np.where(base_grid == 1)
 
-    for i in range(nLayouts):
-        env = GREnv(size=size, agent_view_size=[5, 5], base_grid=None, render_mode=None, initial_distance = initial_distance, enable_hidden_cost=enableHiddenCost)
-        env.reset()
-        base_grid = env.base_grid
+        hidden_cost_matrix_1 = np.zeros((size, size))
+        hidden_cost_matrix_2 = np.zeros((size, size))
+        hidden_cost_matrix_3 = np.zeros((size, size))
+        hidden_cost_matrix_4 = np.zeros((size, size))
 
-        for j in range(nScenarios):
-            env = GREnv(size=32, agent_view_size=[5, 5], base_grid=base_grid, render_mode=None, initial_distance = initial_distance, enable_hidden_cost=enableHiddenCost)
-            env.reset()
+        for i in range(size):
+            for j in range(size):
+                # cost for each cell equal to the distance to the closet wall
+                if base_grid[i, j] == 0:
+                    min_dist = np.min(np.abs(rows - i) + np.abs(cols - j))
+                    # like wall
+                    hidden_cost_matrix_1[i, j] = min_dist
+                    # hate wall
+                    hidden_cost_matrix_2[i, j] = 1 / (min_dist + 1)
+                    # like edge
+                    hidden_cost_matrix_3[i, j] = min(i, j, size - i - 1, size - j - 1)
+                    # hate edge
+                    hidden_cost_matrix_4[i, j] = 1 / (min(i, j, size - i - 1, size - j - 1) + 1)
 
-            goals = env.goals
-            target_goal = env.goal
+        hidden_costs = [hidden_cost_matrix_1, hidden_cost_matrix_2, hidden_cost_matrix_3, hidden_cost_matrix_4]
 
-            local_data = pd.DataFrame([{"layout": i, "scenario": j, "observer_pos": env.observer.pos, "target_pos": env.target.pos, 
-                                        "observer_dir": env.observer.dir, "target_dir": env.target.dir,
-                                        "goals": goals, "target_goal": target_goal, "base_grid": base_grid.tolist(),
-                                        "hidden_cost": env.hidden_cost.tolist(),
-                                        "initial_distance": initial_distance}])
-            dataset = pd.concat([dataset, local_data], ignore_index=True)
-            print(i, j)
+        for initial_distance in initial_distances:
+            
+            for scenario_id in range(num_scenarios):
+                # select start positions and goal positions
+                env = AGREnv(size=size, initial_distance=initial_distance, base_grid=base_grid)
+                agent = AstarTarget(env)
 
-    dataset.to_csv(str(initial_distance) + output, index=False)
+                obs, info = env.reset()
+                done = False
+                while not done:
+                    action = agent.compute_action(obs)
+                    obs, reward, done, info = env.step(action)
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Script to generate scenarios")
-    parser.add_argument("--nLayouts", type=int, default=10, help="Number of Layouts")
-    parser.add_argument("--nScenarios", type=int, default=5, help="Number of scenarios per layout")
-    parser.add_argument("--enableHiddenCost", type=bool, default=True, help="Number of scenarios per layout")
-    parser.add_argument("--init", type=int, default=3, help="Initial distance between observer and actor")
-    parser.add_argument("--output", type=str, default="scenarios.csv", help="Dataset output directory")
+                # Save the hidden costs and the base grid
+                hidden_costs_df = pd.DataFrame({
+                    'hidden_cost_1': hidden_cost_matrix_1.flatten(),
+                    'hidden_cost_2': hidden_cost_matrix_2.flatten(),
+                    'hidden_cost_3': hidden_cost_matrix_3.flatten(),
+                    'hidden_cost_4': hidden_cost_matrix_4.flatten(),
+                    'base_grid': base_grid.flatten()
+                })
 
-    args = parser.parse_args()
-
-    main(args.nLayouts, args.nScenarios, args.enableHiddenCost, args.output, args.init)
+                filename = f"hidden_costs_size_{size}_distance_{initial_distance}_scenario_{scenario}.csv"
+                hidden_costs_df.to_csv(filename, index=False)
