@@ -3,6 +3,7 @@ from ..astar import astar
 
 import random
 import numpy as np
+import matplotlib.pyplot as plt
 
 
 class AstarTarget(BaseAgent):
@@ -28,9 +29,8 @@ class AstarTarget(BaseAgent):
         dir = self.agent.state.dir
 
 
-        if self.path is None:
-            print(self.env.goal)
-            print(self.goal)
+        if self.path is None or self.index >= len(self.path) - 1:
+            
             self.path = astar((pos, dir), self.goal, self.env, self.hidden_cost)
             self.index = 0
 

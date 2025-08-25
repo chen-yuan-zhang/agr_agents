@@ -168,7 +168,7 @@ def astar(pos_state, target, env, cost = None, heuristic=heuristic_manhattan, ma
             next_pos = Tile(*next_pos)
 
             if isinstance(cost, np.ndarray):
-                edge_cost = cost[next_pos.j, next_pos.i]
+                edge_cost = cost[next_pos.j, next_pos.i] + 1
             else:
                 edge_cost = 1
 

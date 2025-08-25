@@ -1,0 +1,12 @@
+{
+	"folders": [
+		{
+			"name": "multigrid",
+			"path": "../../../multigrid"
+		},
+		{
+			"path": "../.."
+		}
+	],
+	"settings": {}
+}
